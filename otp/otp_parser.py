@@ -116,8 +116,8 @@ class OTPParser:
     ) -> OTPResult:
         """Try extracting OTP from multiple email fields in priority order."""
         for text, source in [
-            (subject, "subject"),
             (body, "body"),
+            (subject, "subject"),
             (html_body, "html_body"),
         ]:
             if text:

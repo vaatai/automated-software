@@ -210,7 +210,7 @@ class EmailOTPService:
                         result = self._parser.extract_from_email(
                             body=data.get("body"),
                             subject=data.get("subject"),
-                            html_body=data.get("body"),
+                            html_body=data.get("htmlBody"),
                         )
 
                         if result.otp:
