@@ -90,8 +90,8 @@ class RegistrationBot:
                         except Exception:
                             num = await self.pvapins.rent_number()
                             sms_provider = "pvapins"
-                        sms_order_id = num["order_id"]
-                        reg_data["phone"] = num["phone_number"]
+                        sms_order_id = num.order_id
+                        reg_data["phone"] = num.phone_number
                         result["phone_used"] = reg_data["phone"]
 
                     # 3) navigate to registration page
