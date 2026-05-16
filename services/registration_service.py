@@ -151,7 +151,7 @@ class RegistrationService:
         overflow_ids: list[int] = []
         if overflow_count > 0 and queue_overflow:
             overflow_ids = await self.limit_svc.create_overflow_registrations(
-                website_id, overflow_count, priority
+                website_id, overflow_count
             )
 
         rejected = count - actual - len(overflow_ids)

@@ -125,11 +125,12 @@ class DailyLimitService:
     # ── overflow management ─────────────────────────────────
 
     async def create_overflow_registrations(
-        self, website_id: int, count: int, priority: str = "normal"
+        self, website_id: int, count: int
     ) -> list[int]:
         """Create DAILY_LIMIT_REACHED registrations for overflow processing.
 
         These will be picked up by the next-day overflow processor.
+        Overflow registrations are always re-queued at normal priority.
         """
         overflow_ids: list[int] = []
         for _ in range(count):
@@ -174,10 +175,10 @@ class DailyLimitService:
 
     # ── admin controls ──────────────────────────────────────
 
-    async def update_limit(
+    async def _update_limit_no_commit(
         self, website_id: int, new_limit: int
     ) -> dict:
-        """Dynamically update the daily registration limit for a website."""
+        """Update limit without committing — used by bulk operations."""
         website = await self._get_website(website_id)
         old_limit = website.max_registrations_per_day
 
@@ -186,12 +187,6 @@ class DailyLimitService:
             .where(Website.id == website_id)
             .values(max_registrations_per_day=new_limit)
         )
-        await self.db.commit()
-
-        logger.info(
-            "Updated daily limit for website %d: %d → %d",
-            website_id, old_limit, new_limit,
-        )
 
         return {
             "website_id": website_id,
@@ -199,23 +194,57 @@ class DailyLimitService:
             "new_limit": new_limit,
         }
 
+    async def update_limit(
+        self, website_id: int, new_limit: int
+    ) -> dict:
+        """Dynamically update the daily registration limit for a website."""
+        result = await self._update_limit_no_commit(website_id, new_limit)
+        await self.db.commit()
+
+        logger.info(
+            "Updated daily limit for website %d: %d → %d",
+            website_id, result["old_limit"], new_limit,
+        )
+
+        return result
+
     async def bulk_update_limits(
         self, updates: list[dict]
     ) -> list[dict]:
         """Batch update limits for multiple websites.
 
+        Atomic: validates all websites first, then commits all updates
+        in a single transaction. If any website is not found, none are updated.
+
         Each entry: {"website_id": int, "limit": int}
         """
+        # Validate all websites exist before making changes
+        for entry in updates:
+            await self._get_website(entry["website_id"])
+
+        # All valid — apply updates in a single transaction
         results = []
         for entry in updates:
-            result = await self.update_limit(entry["website_id"], entry["limit"])
+            result = await self._update_limit_no_commit(
+                entry["website_id"], entry["limit"]
+            )
             results.append(result)
+
+        await self.db.commit()
+
+        for result in results:
+            logger.info(
+                "Updated daily limit for website %d: %d → %d",
+                result["website_id"], result["old_limit"], result["new_limit"],
+            )
+
         return results
 
     async def pause_website(self, website_id: int) -> dict:
         """Pause a website to stop all registrations immediately."""
         from models.website import WebsiteStatus
 
+        await self._get_website(website_id)
         await self.db.execute(
             update(Website)
             .where(Website.id == website_id)
@@ -229,6 +258,7 @@ class DailyLimitService:
         """Resume a paused website."""
         from models.website import WebsiteStatus
 
+        await self._get_website(website_id)
         await self.db.execute(
             update(Website)
             .where(Website.id == website_id)
