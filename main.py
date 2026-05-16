@@ -1,0 +1,45 @@
+import logging
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+
+from api.dashboard import router as dashboard_router
+from api.health import router as health_router
+from api.registrations import router as registrations_router
+from api.websites import router as websites_router
+from configs.settings import settings
+from utils.logging_middleware import LoggingMiddleware
+
+logging.basicConfig(
+    level=logging.DEBUG if settings.DEBUG else logging.INFO,
+    format="%(asctime)s  %(levelname)-8s  %(name)s  %(message)s",
+)
+
+app = FastAPI(
+    title=settings.APP_NAME,
+    description=(
+        "Automated website registration with email OTP (MailSlurp) "
+        "and mobile OTP (5SIM / PVAPins) verification."
+    ),
+    version=settings.APP_VERSION,
+)
+
+# ── middleware ──────────────────────────────────────────────
+app.add_middleware(LoggingMiddleware)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ── static files ───────────────────────────────────────────
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# ── routes ─────────────────────────────────────────────────
+app.include_router(health_router)
+app.include_router(dashboard_router)
+app.include_router(websites_router)
+app.include_router(registrations_router)

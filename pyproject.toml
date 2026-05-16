@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "automated-software"
+version = "0.1.0"
+description = "Automated website registration with email/mobile OTP verification"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.0",
+    "sqlalchemy>=2.0.25",
+    "alembic>=1.13.1",
+    "asyncpg>=0.29.0",
+    "psycopg2-binary>=2.9.9",
+    "celery[redis]>=5.3.6",
+    "redis[hiredis]>=5.0.1",
+    "playwright>=1.41.0",
+    "httpx>=0.26.0",
+    "pydantic>=2.5.3",
+    "pydantic-settings>=2.1.0",
+    "python-dotenv>=1.0.0",
+    "jinja2>=3.1.3",
+    "python-multipart>=0.0.6",
+    "beautifulsoup4>=4.12.3",
+    "tenacity>=8.2.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.2.0",
+    "pytest>=7.4.4",
+    "pytest-asyncio>=0.23.3",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["."]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["configs*", "models*", "api*", "services*", "workers*", "playwright_bot*", "otp*", "utils*"]

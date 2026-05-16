@@ -1,0 +1,41 @@
+from pydantic_settings import BaseSettings
+
+
+class Settings(BaseSettings):
+    """Application settings loaded from environment variables / .env file."""
+
+    # --- Database (PostgreSQL) ---
+    DATABASE_URL: str = "postgresql+asyncpg://user:password@localhost:5432/automated_software"
+    DATABASE_URL_SYNC: str = "postgresql://user:password@localhost:5432/automated_software"
+
+    # --- Redis ---
+    REDIS_URL: str = "redis://localhost:6379/0"
+
+    # --- MailSlurp (Email OTP) ---
+    MAILSLURP_API_KEY: str = ""
+
+    # --- 5SIM (Primary SMS OTP) ---
+    FIVESIM_API_KEY: str = ""
+    FIVESIM_BASE_URL: str = "https://5sim.net/v1"
+
+    # --- PVAPins (Backup SMS OTP) ---
+    PVAPINS_API_KEY: str = ""
+    PVAPINS_BASE_URL: str = "https://pvapins.com/api"
+
+    # --- Application ---
+    APP_NAME: str = "Automated Registration Software"
+    APP_VERSION: str = "0.1.0"
+    DEBUG: bool = False
+    SECRET_KEY: str = "change-me-to-a-random-secret"
+    MAX_CONCURRENT_WORKERS: int = 5
+    DEFAULT_DAILY_LIMIT: int = 100
+    OTP_POLL_TIMEOUT_SECONDS: int = 120
+    OTP_POLL_INTERVAL_SECONDS: int = 5
+
+    # --- Proxy (optional) ---
+    PROXY_URL: str = ""
+
+    model_config = {"env_file": ".env", "extra": "ignore"}
+
+
+settings = Settings()
