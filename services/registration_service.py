@@ -61,12 +61,17 @@ class RegistrationService:
                 "task_ids": [],
             }
 
-        task_ids: list[str] = []
+        registrations: list[Registration] = []
         for _ in range(actual):
             reg = Registration(website_id=website_id, status=RegistrationStatus.PENDING)
             self.db.add(reg)
             await self.db.flush()
+            registrations.append(reg)
 
+        await self.db.commit()
+
+        task_ids: list[str] = []
+        for reg in registrations:
             task = execute_registration.delay(reg.id, website_id)
             reg.celery_task_id = task.id
             task_ids.append(task.id)

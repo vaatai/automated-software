@@ -96,7 +96,7 @@
                             <td>{{ "Yes" if w.requires_email_otp else "No" }}</td>
                             <td>{{ "Yes" if w.requires_mobile_otp else "No" }}</td>
                             <td>{{ w.max_registrations_per_day }}</td>
-                            <td><span class="badge badge-{{ w.status }}">{{ w.status }}</span></td>
+                            <td><span class="badge badge-{{ w.status.value }}">{{ w.status.value }}</span></td>
                             <td>
                                 <button class="btn btn-sm btn-primary" onclick="triggerRegistration({{ w.id }})">Register</button>
                                 <button class="btn btn-sm btn-danger" onclick="deleteWebsite({{ w.id }})">Delete</button>
