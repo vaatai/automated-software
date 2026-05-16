@@ -84,6 +84,14 @@ task_routes = {
         "queue": "monitoring",
         "routing_key": "monitoring",
     },
+    "workers.proxy_worker.reset_rate_limited_proxies": {
+        "queue": "monitoring",
+        "routing_key": "monitoring",
+    },
+    "workers.proxy_worker.check_proxy_health": {
+        "queue": "monitoring",
+        "routing_key": "monitoring",
+    },
 }
 
 # ── celery app ──────────────────────────────────────────────
@@ -96,6 +104,7 @@ celery_app = Celery(
         "workers.dead_letter_worker",
         "workers.task_monitor",
         "workers.daily_limit_worker",
+        "workers.proxy_worker",
     ],
 )
 
@@ -159,6 +168,16 @@ celery_app.conf.update(
         "process-overflow-queue": {
             "task": "workers.daily_limit_worker.process_overflow_queue",
             "schedule": 86400.0,  # daily (runs after midnight reset)
+            "options": {"queue": "monitoring"},
+        },
+        "reset-rate-limited-proxies": {
+            "task": "workers.proxy_worker.reset_rate_limited_proxies",
+            "schedule": 300.0,  # every 5 minutes
+            "options": {"queue": "monitoring"},
+        },
+        "check-proxy-health": {
+            "task": "workers.proxy_worker.check_proxy_health",
+            "schedule": 600.0,  # every 10 minutes
             "options": {"queue": "monitoring"},
         },
         "cleanup-daily-records": {

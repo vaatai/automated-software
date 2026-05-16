@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from api.daily_limits import router as daily_limits_router
 from api.dashboard import router as dashboard_router
 from api.health import router as health_router
+from api.proxies import router as proxies_router
 from api.registrations import router as registrations_router
 from api.tasks import router as tasks_router
 from api.webhooks import router as webhooks_router
@@ -48,4 +49,5 @@ app.include_router(websites_router)
 app.include_router(registrations_router)
 app.include_router(daily_limits_router)
 app.include_router(tasks_router)
+app.include_router(proxies_router)
 app.include_router(webhooks_router)
