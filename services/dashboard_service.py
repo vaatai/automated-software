@@ -5,6 +5,7 @@ Provides all data needed for the monitoring dashboard with pagination,
 filtering, search, and time-series aggregation.
 """
 
+import asyncio
 import logging
 from datetime import date, datetime, timedelta, timezone
 
@@ -326,7 +327,10 @@ class DashboardService:
         if registration_id:
             filters.append(TaskLog.registration_id == registration_id)
         if level:
-            filters.append(TaskLog.level == LogLevel(level))
+            try:
+                filters.append(TaskLog.level == LogLevel(level))
+            except ValueError:
+                return {"total": 0, "items": []}
         if step:
             filters.append(TaskLog.step == step)
         if search:
@@ -571,14 +575,18 @@ class DashboardService:
     # ── worker status ───────────────────────────────────────
 
     async def get_worker_status(self) -> dict:
-        """Get Celery worker and queue status via Celery inspect."""
+        """Get Celery worker and queue status via Celery inspect.
+
+        Celery inspect calls are synchronous RPC — run them in a thread
+        to avoid blocking the async event loop.
+        """
         from configs.celery_app import celery_app
 
-        inspect = celery_app.control.inspect()
+        def _inspect() -> tuple[dict, dict, dict]:
+            i = celery_app.control.inspect(timeout=3)
+            return i.active() or {}, i.reserved() or {}, i.stats() or {}
 
-        active = inspect.active() or {}
-        reserved = inspect.reserved() or {}
-        stats = inspect.stats() or {}
+        active, reserved, stats = await asyncio.to_thread(_inspect)
 
         workers = []
         for worker_name, worker_stats in stats.items():
@@ -612,12 +620,9 @@ class DashboardService:
         }
 
     async def get_queue_depths(self) -> dict:
-        """Get current queue sizes via Redis."""
-        import redis
+        """Get current queue sizes via async Redis."""
+        from configs.redis import redis_client
 
-        from configs.settings import settings
-
-        r = redis.from_url(settings.REDIS_URL)
         queues = [
             "registrations.high",
             "registrations",
@@ -628,8 +633,7 @@ class DashboardService:
 
         depths = {}
         for q_name in queues:
-            depths[q_name] = r.llen(q_name) or 0
-        r.close()
+            depths[q_name] = await redis_client.llen(q_name) or 0
 
         return depths
 
