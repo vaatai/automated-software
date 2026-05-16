@@ -15,6 +15,8 @@ psycopg2-binary>=2.9.9
 # Task queue
 celery[redis]>=5.3.6
 redis[hiredis]>=5.0.1
+flower>=2.0.0
+kombu>=5.3.4
 
 # Browser automation
 playwright>=1.41.0

@@ -7,7 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models.daily_limit import DailyLimit
 from models.registration import Registration, RegistrationStatus
 from models.website import Website
-from workers.registration_worker import execute_registration
+from workers.registration_worker import (
+    execute_registration,
+    execute_registration_high,
+    execute_registration_low,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +45,11 @@ class RegistrationService:
         return remaining >= requested, max(0, remaining)
 
     async def queue_registrations(
-        self, website_id: int, count: int = 1, custom_data: dict | None = None
+        self,
+        website_id: int,
+        count: int = 1,
+        custom_data: dict | None = None,
+        priority: str = "normal",
     ) -> dict:
         website = (
             await self.db.execute(select(Website).where(Website.id == website_id))
@@ -61,6 +69,13 @@ class RegistrationService:
                 "task_ids": [],
             }
 
+        # Select task function based on priority
+        task_fn = {
+            "high": execute_registration_high,
+            "normal": execute_registration,
+            "low": execute_registration_low,
+        }.get(priority, execute_registration)
+
         registrations: list[Registration] = []
         for _ in range(actual):
             reg = Registration(website_id=website_id, status=RegistrationStatus.PENDING)
@@ -72,7 +87,7 @@ class RegistrationService:
 
         task_ids: list[str] = []
         for reg in registrations:
-            task = execute_registration.delay(reg.id, website_id)
+            task = task_fn.delay(reg.id, website_id)
             reg.celery_task_id = task.id
             task_ids.append(task.id)
 
@@ -83,6 +98,7 @@ class RegistrationService:
             "total_rejected": count - actual,
             "reason": "Partially limited" if count > actual else None,
             "task_ids": task_ids,
+            "priority": priority,
         }
 
     async def get_registration(self, registration_id: int) -> Registration | None:

@@ -1,4 +1,3 @@
-from celery.result import AsyncResult
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,7 +7,6 @@ from api.schemas import (
     RegistrationResponse,
     RegistrationStats,
 )
-from configs.celery_app import celery_app
 from configs.database import get_db
 from services.registration_service import RegistrationService
 
@@ -20,7 +18,10 @@ async def queue_registration(body: RegistrationRequest, db: AsyncSession = Depen
     svc = RegistrationService(db)
     try:
         data = await svc.queue_registrations(
-            website_id=body.website_id, count=body.count, custom_data=body.custom_data
+            website_id=body.website_id,
+            count=body.count,
+            custom_data=body.custom_data,
+            priority=body.priority.value,
         )
         return BulkRegistrationResponse(**data)
     except ValueError as exc:
@@ -57,9 +58,3 @@ async def get_registration(registration_id: int, db: AsyncSession = Depends(get_
     if not reg:
         raise HTTPException(404, "Registration not found")
     return reg
-
-
-@router.get("/task/{task_id}")
-async def task_status(task_id: str):
-    res = AsyncResult(task_id, app=celery_app)
-    return {"task_id": task_id, "status": res.status, "result": res.result if res.ready() else None}
