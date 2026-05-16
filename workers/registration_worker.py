@@ -113,7 +113,7 @@ def execute_registration(self, registration_id: int, website_id: int) -> dict:
             db.commit()
             logger.exception("Registration %d permanently failed", registration_id)
             raise
-        db.commit()
+        db.rollback()
         logger.warning("Registration %d failed (retry %d/%d)", registration_id, self.request.retries + 1, self.max_retries)
         raise self.retry(exc=exc)
     finally:
