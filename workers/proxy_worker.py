@@ -68,7 +68,7 @@ def check_proxy_health() -> dict:
                 deactivated += 1
                 logger.warning(
                     "Proxy %d (%s:%d) deactivated: %.0f%% failure rate",
-                    proxy.id, proxy.host, proxy.port, fail_rate * 100,
+                    proxy.id, proxy.host, proxy.port, fail_rate,
                 )
 
         # Mark stale RATE_LIMITED proxies (>30 min old) as ACTIVE
