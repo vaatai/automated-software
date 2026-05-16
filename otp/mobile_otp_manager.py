@@ -250,10 +250,18 @@ class MobileOTPManager:
                 })
                 continue
 
-            # Poll for OTP
-            sms_result = await provider.poll_for_otp(
-                rental.order_id, timeout=poll_timeout, interval=poll_interval
-            )
+            # Poll for OTP (ensure number is released even on unexpected errors)
+            try:
+                sms_result = await provider.poll_for_otp(
+                    rental.order_id, timeout=poll_timeout, interval=poll_interval
+                )
+            except Exception as exc:
+                logger.error(
+                    "%s: poll_for_otp crashed: %s", provider.provider_name, exc
+                )
+                sms_result = SMSResult(
+                    otp=None, provider=provider.provider_name, order_id=rental.order_id
+                )
 
             if sms_result.otp:
                 await provider.release_number(rental.order_id, success=True)
