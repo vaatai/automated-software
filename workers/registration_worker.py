@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from sqlalchemy import create_engine, select, update
 from sqlalchemy.orm import Session, sessionmaker
@@ -10,6 +10,7 @@ from configs.settings import settings
 from models.daily_limit import DailyLimit
 from models.registration import Registration, RegistrationStatus
 from models.website import Website
+from playwright_bot.browser_manager import BrowserManager
 from playwright_bot.registration_bot import RegistrationBot
 
 logger = logging.getLogger(__name__)
@@ -63,16 +64,20 @@ def execute_registration(self, registration_id: int, website_id: int) -> dict:
         db.execute(
             update(Registration)
             .where(Registration.id == registration_id)
-            .values(status=RegistrationStatus.IN_PROGRESS, celery_task_id=self.request.id)
+            .values(
+                status=RegistrationStatus.IN_PROGRESS,
+                celery_task_id=self.request.id,
+                started_at=datetime.now(timezone.utc),
+                retry_count=self.request.retries,
+            )
         )
         db.commit()
 
-        bot = RegistrationBot()
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
             result = loop.run_until_complete(
-                bot.register(
+                _run_registration(
                     website_config={"url": website.url, "form_config": website.form_config},
                     registration_id=registration_id,
                     requires_email_otp=website.requires_email_otp,
@@ -94,7 +99,7 @@ def execute_registration(self, registration_id: int, website_id: int) -> dict:
             "screenshot_path": result.get("screenshot"),
         }
         if ok:
-            values["completed_at"] = datetime.utcnow()
+            values["completed_at"] = datetime.now(timezone.utc)
 
         db.execute(update(Registration).where(Registration.id == registration_id).values(**values))
         _update_daily_count(db, website_id, success=ok)
@@ -118,6 +123,32 @@ def execute_registration(self, registration_id: int, website_id: int) -> dict:
         raise self.retry(exc=exc)
     finally:
         db.close()
+
+
+async def _run_registration(
+    website_config: dict,
+    registration_id: int,
+    requires_email_otp: bool,
+    requires_mobile_otp: bool,
+) -> dict:
+    """Async helper — creates a BrowserManager, runs the bot, and tears down."""
+    mgr = BrowserManager(
+        max_contexts=1,
+        headless=True,
+        default_timeout_ms=settings.OTP_POLL_TIMEOUT_SECONDS * 1000,
+        navigation_timeout_ms=30_000,
+    )
+    await mgr.start()
+    try:
+        bot = RegistrationBot(browser_manager=mgr)
+        return await bot.register(
+            website_config=website_config,
+            registration_id=registration_id,
+            requires_email_otp=requires_email_otp,
+            requires_mobile_otp=requires_mobile_otp,
+        )
+    finally:
+        await mgr.stop()
 
 
 @celery_app.task
