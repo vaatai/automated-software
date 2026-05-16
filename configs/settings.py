@@ -18,9 +18,13 @@ class Settings(BaseSettings):
     FIVESIM_API_KEY: str = ""
     FIVESIM_BASE_URL: str = "https://5sim.net/v1"
 
-    # --- PVAPins (Backup SMS OTP) ---
+    # --- PVAPins (Secondary SMS OTP) ---
     PVAPINS_API_KEY: str = ""
     PVAPINS_BASE_URL: str = "https://pvapins.com/api"
+
+    # --- SMS-Activate (Backup SMS OTP) ---
+    SMSACTIVATE_API_KEY: str = ""
+    SMSACTIVATE_BASE_URL: str = "https://api.sms-activate.org/stubs/handler_api.php"
 
     # --- Application ---
     APP_NAME: str = "Automated Registration Software"
