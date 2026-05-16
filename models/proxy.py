@@ -97,7 +97,12 @@ class Proxy(Base):
 
     @property
     def url(self) -> str:
-        auth = f"{self.username}:{self.password}@" if self.username else ""
+        if self.username and self.password:
+            auth = f"{self.username}:{self.password}@"
+        elif self.username:
+            auth = f"{self.username}@"
+        else:
+            auth = ""
         return f"{self.protocol.value}://{auth}{self.host}:{self.port}"
 
     def __repr__(self) -> str:
