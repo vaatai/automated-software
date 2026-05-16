@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Automated Registration — Dashboard</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Automated Registration Dashboard</h1>
+            <p class="subtitle">Website registration with OTP verification</p>
+        </header>
+
+        <!-- Stats Cards -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-number">{{ stats.total }}</div>
+                <div class="stat-label">Total Registrations</div>
+            </div>
+            <div class="stat-card success">
+                <div class="stat-number">{{ stats.success }}</div>
+                <div class="stat-label">Successful</div>
+            </div>
+            <div class="stat-card danger">
+                <div class="stat-number">{{ stats.failed }}</div>
+                <div class="stat-label">Failed</div>
+            </div>
+            <div class="stat-card warning">
+                <div class="stat-number">{{ stats.pending }}</div>
+                <div class="stat-label">Pending / In Progress</div>
+            </div>
+        </div>
+
+        <!-- Add Website Section -->
+        <section class="card">
+            <h2>Add New Website</h2>
+            <form id="addWebsiteForm" class="form-grid">
+                <div class="form-group">
+                    <label for="name">Website Name</label>
+                    <input type="text" id="name" name="name" required placeholder="e.g., Example Site">
+                </div>
+                <div class="form-group">
+                    <label for="url">Registration URL</label>
+                    <input type="url" id="url" name="url" required placeholder="https://example.com/register">
+                </div>
+                <div class="form-group">
+                    <label for="max_daily">Max Registrations/Day</label>
+                    <input type="number" id="max_daily" name="max_daily" value="100" min="1">
+                </div>
+                <div class="form-group checkbox-group">
+                    <label><input type="checkbox" id="requires_email_otp"> Requires Email OTP</label>
+                    <label><input type="checkbox" id="requires_mobile_otp"> Requires Mobile OTP</label>
+                </div>
+                <div class="form-group full-width">
+                    <label for="form_config">Form Configuration (JSON)</label>
+                    <textarea id="form_config" name="form_config" rows="8" placeholder='{
+  "registration_url": "https://example.com/register",
+  "fields": {
+    "email": {"selector": "#email", "type": "email"},
+    "password": {"selector": "#password", "type": "password"},
+    "username": {"selector": "#username", "type": "text"}
+  },
+  "submit_button": {"selector": "#submit-btn"},
+  "success_indicator": {"selector": ".success-message"}
+}'></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">Add Website</button>
+            </form>
+        </section>
+
+        <!-- Websites List -->
+        <section class="card">
+            <h2>Configured Websites</h2>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>URL</th>
+                            <th>Email OTP</th>
+                            <th>Mobile OTP</th>
+                            <th>Daily Limit</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="websitesTable">
+                        {% for w in websites %}
+                        <tr>
+                            <td>{{ w.id }}</td>
+                            <td>{{ w.name }}</td>
+                            <td><a href="{{ w.url }}" target="_blank">{{ w.url[:40] }}...</a></td>
+                            <td>{{ "Yes" if w.requires_email_otp else "No" }}</td>
+                            <td>{{ "Yes" if w.requires_mobile_otp else "No" }}</td>
+                            <td>{{ w.max_registrations_per_day }}</td>
+                            <td><span class="badge badge-{{ w.status }}">{{ w.status }}</span></td>
+                            <td>
+                                <button class="btn btn-sm btn-primary" onclick="triggerRegistration({{ w.id }})">Register</button>
+                                <button class="btn btn-sm btn-danger" onclick="deleteWebsite({{ w.id }})">Delete</button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Registration Trigger -->
+        <section class="card" id="registerSection" style="display:none;">
+            <h2>Trigger Registration</h2>
+            <form id="registerForm" class="form-inline">
+                <input type="hidden" id="reg_website_id">
+                <div class="form-group">
+                    <label for="reg_count">Number of Registrations</label>
+                    <input type="number" id="reg_count" value="1" min="1" max="100">
+                </div>
+                <button type="submit" class="btn btn-primary">Start Registration</button>
+                <button type="button" class="btn btn-secondary" onclick="closeRegister()">Cancel</button>
+            </form>
+            <div id="registerResult" class="result-box" style="display:none;"></div>
+        </section>
+
+        <!-- Recent Registrations -->
+        <section class="card">
+            <h2>Recent Registrations</h2>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Website</th>
+                            <th>Status</th>
+                            <th>Email</th>
+                            <th>Phone</th>
+                            <th>Email OTP</th>
+                            <th>Mobile OTP</th>
+                            <th>Error</th>
+                            <th>Created</th>
+                        </tr>
+                    </thead>
+                    <tbody id="registrationsTable">
+                        {% for r in registrations %}
+                        <tr>
+                            <td>{{ r.id }}</td>
+                            <td>{{ r.website_id }}</td>
+                            <td><span class="badge badge-{{ r.status.value }}">{{ r.status.value }}</span></td>
+                            <td>{{ r.email_used or "-" }}</td>
+                            <td>{{ r.phone_used or "-" }}</td>
+                            <td>{{ "Yes" if r.email_otp_verified else "No" }}</td>
+                            <td>{{ "Yes" if r.mobile_otp_verified else "No" }}</td>
+                            <td class="error-cell">{{ (r.error_message or "-")[:50] }}</td>
+                            <td>{{ r.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>
