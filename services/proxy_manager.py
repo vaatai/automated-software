@@ -276,6 +276,7 @@ class ProxyManager:
         if not proxy:
             return False
         proxy.status = ProxyStatus.ACTIVE
+        proxy.deleted_at = None
         if reset_stats:
             proxy.fail_count = 0
             proxy.success_count = 0
