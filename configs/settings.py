@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     OTP_POLL_TIMEOUT_SECONDS: int = 120
     OTP_POLL_INTERVAL_SECONDS: int = 5
 
+    # --- MailSlurp Webhook ---
+    MAILSLURP_WEBHOOK_URL: str = ""
+    MAILSLURP_INBOX_EXPIRY_MS: int = 600_000
+
     # --- Proxy (optional) ---
     PROXY_URL: str = ""
 
