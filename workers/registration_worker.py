@@ -40,6 +40,9 @@ RETRY_BACKOFF = 30  # base delay in seconds
 RETRY_BACKOFF_MAX = 300  # max delay cap
 RETRY_JITTER = True
 
+# Exceptions that should NOT be retried (permanent failures)
+NON_RETRIABLE = (SoftTimeLimitExceeded, ValueError, KeyError, TypeError)
+
 
 def _get_db() -> Session:
     return SyncSession()
@@ -112,30 +115,20 @@ def _assign_proxy(db: Session) -> Proxy | None:
     return proxy
 
 
-# ── main registration task ──────────────────────────────────
-@celery_app.task(
-    bind=True,
-    name="workers.registration_worker.execute_registration",
-    max_retries=MAX_RETRIES,
-    default_retry_delay=RETRY_BACKOFF,
-    autoretry_for=(Exception,),
-    retry_backoff=RETRY_BACKOFF,
-    retry_backoff_max=RETRY_BACKOFF_MAX,
-    retry_jitter=RETRY_JITTER,
-    acks_late=True,
-    reject_on_worker_lost=True,
-    track_started=True,
-    soft_time_limit=300,
-    time_limit=600,
-)
-def execute_registration(self, registration_id: int, website_id: int) -> dict:
-    """Run a single registration in a fully isolated browser context.
+# ── shared registration logic (plain function, not a task) ──
+def _do_registration(task, registration_id: int, website_id: int) -> dict:
+    """Core registration logic shared by all priority variants.
 
-    Retry policy: exponential backoff (30s base, 300s cap) with jitter.
-    Worker isolation: separate event loop, BrowserManager, proxy, cookies.
+    Accepts the bound Celery task instance so that self.request.id,
+    self.request.retries, and self.retry() work correctly regardless
+    of which queue/priority variant dispatched the task.
+
+    Retry policy: manual self.retry() with exponential backoff.
+    Non-retriable exceptions (SoftTimeLimitExceeded, ValueError, etc.)
+    are sent to the dead-letter queue immediately.
     """
     db = _get_db()
-    task_id = self.request.id
+    task_id = task.request.id
     start_time = time.monotonic()
 
     try:
@@ -154,7 +147,7 @@ def execute_registration(self, registration_id: int, website_id: int) -> dict:
                 status=RegistrationStatus.IN_PROGRESS,
                 celery_task_id=task_id,
                 started_at=datetime.now(timezone.utc),
-                retry_count=self.request.retries,
+                retry_count=task.request.retries,
             )
         )
         db.commit()
@@ -162,7 +155,7 @@ def execute_registration(self, registration_id: int, website_id: int) -> dict:
         _log_task_event(
             db, registration_id, task_id,
             LogLevel.INFO, "task_start",
-            f"Registration started (attempt {self.request.retries + 1}/{MAX_RETRIES + 1})",
+            f"Registration started (attempt {task.request.retries + 1}/{MAX_RETRIES + 1})",
         )
 
         # Assign proxy from pool
@@ -262,11 +255,39 @@ def execute_registration(self, registration_id: int, website_id: int) -> dict:
         )
         _update_daily_count(db, website_id, success=False)
         db.commit()
+        _send_to_dead_letter(registration_id, website_id, "Soft time limit exceeded")
+        raise
+
+    except NON_RETRIABLE as exc:
+        # Permanent failures — do not retry
+        elapsed_ms = int((time.monotonic() - start_time) * 1000)
+        db.execute(
+            update(Registration)
+            .where(Registration.id == registration_id)
+            .values(
+                status=RegistrationStatus.FAILED,
+                error_message=str(exc),
+            )
+        )
+        _update_daily_count(db, website_id, success=False)
+        _log_task_event(
+            db, registration_id, task_id,
+            LogLevel.ERROR, "task_failed_permanent",
+            f"Non-retriable error: {type(exc).__name__}",
+            details=str(exc),
+            duration_ms=elapsed_ms,
+        )
+        db.commit()
+        _send_to_dead_letter(registration_id, website_id, str(exc))
+        logger.exception(
+            "Registration %d permanently failed (non-retriable)", registration_id
+        )
         raise
 
     except Exception as exc:
-        retries_exhausted = self.request.retries >= self.max_retries
+        # Transient failures — retry with exponential backoff
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
+        retries_exhausted = task.request.retries >= task.max_retries
 
         if retries_exhausted:
             db.execute(
@@ -278,7 +299,6 @@ def execute_registration(self, registration_id: int, website_id: int) -> dict:
                 )
             )
             _update_daily_count(db, website_id, success=False)
-
             _log_task_event(
                 db, registration_id, task_id,
                 LogLevel.ERROR, "task_failed_permanent",
@@ -287,10 +307,7 @@ def execute_registration(self, registration_id: int, website_id: int) -> dict:
                 duration_ms=elapsed_ms,
             )
             db.commit()
-
-            # Send to dead-letter queue for inspection
             _send_to_dead_letter(registration_id, website_id, str(exc))
-
             logger.exception(
                 "Registration %d permanently failed after %d attempts",
                 registration_id,
@@ -298,58 +315,92 @@ def execute_registration(self, registration_id: int, website_id: int) -> dict:
             )
             raise
 
+        # Log retry event and commit before re-raising
         _log_task_event(
             db, registration_id, task_id,
             LogLevel.WARNING, "task_retry",
-            f"Retrying (attempt {self.request.retries + 1}/{MAX_RETRIES + 1}): {exc}",
+            f"Retrying (attempt {task.request.retries + 1}/{MAX_RETRIES + 1}): {exc}",
             duration_ms=elapsed_ms,
         )
-        db.rollback()
-        raise
+        db.commit()
+
+        logger.warning(
+            "Registration %d failed (retry %d/%d)",
+            registration_id,
+            task.request.retries + 1,
+            task.max_retries,
+        )
+        raise task.retry(exc=exc)
 
     finally:
         db.close()
 
 
-# ── priority variants ───────────────────────────────────────
+# ── celery task definitions ─────────────────────────────────
+@celery_app.task(
+    bind=True,
+    name="workers.registration_worker.execute_registration",
+    max_retries=MAX_RETRIES,
+    default_retry_delay=RETRY_BACKOFF,
+    retry_backoff=RETRY_BACKOFF,
+    retry_backoff_max=RETRY_BACKOFF_MAX,
+    retry_jitter=RETRY_JITTER,
+    throws=(SoftTimeLimitExceeded, ValueError),
+    acks_late=True,
+    reject_on_worker_lost=True,
+    track_started=True,
+    soft_time_limit=300,
+    time_limit=600,
+)
+def execute_registration(self, registration_id: int, website_id: int) -> dict:
+    """Normal-priority registration (queue: registrations)."""
+    return _do_registration(self, registration_id, website_id)
+
+
 @celery_app.task(
     bind=True,
     name="workers.registration_worker.execute_registration_high",
     max_retries=MAX_RETRIES,
-    autoretry_for=(Exception,),
+    default_retry_delay=RETRY_BACKOFF,
     retry_backoff=RETRY_BACKOFF,
     retry_backoff_max=RETRY_BACKOFF_MAX,
     retry_jitter=RETRY_JITTER,
+    throws=(SoftTimeLimitExceeded, ValueError),
     acks_late=True,
     reject_on_worker_lost=True,
     track_started=True,
+    soft_time_limit=300,
+    time_limit=600,
     priority=2,
 )
 def execute_registration_high(
     self, registration_id: int, website_id: int
 ) -> dict:
     """High-priority registration (queue: registrations.high)."""
-    return execute_registration(registration_id, website_id)
+    return _do_registration(self, registration_id, website_id)
 
 
 @celery_app.task(
     bind=True,
     name="workers.registration_worker.execute_registration_low",
     max_retries=MAX_RETRIES,
-    autoretry_for=(Exception,),
+    default_retry_delay=RETRY_BACKOFF,
     retry_backoff=RETRY_BACKOFF,
     retry_backoff_max=RETRY_BACKOFF_MAX,
     retry_jitter=RETRY_JITTER,
+    throws=(SoftTimeLimitExceeded, ValueError),
     acks_late=True,
     reject_on_worker_lost=True,
     track_started=True,
+    soft_time_limit=300,
+    time_limit=600,
     priority=8,
 )
 def execute_registration_low(
     self, registration_id: int, website_id: int
 ) -> dict:
     """Low-priority registration (queue: registrations.low)."""
-    return execute_registration(registration_id, website_id)
+    return _do_registration(self, registration_id, website_id)
 
 
 # ── async registration runner ───────────────────────────────
