@@ -62,8 +62,8 @@ def check_proxy_health() -> dict:
             total = proxy.success_count + proxy.fail_count
             if total == 0:
                 continue
-            fail_rate = proxy.fail_count / total
-            if fail_rate > 0.5:
+            fail_rate = (proxy.fail_count / total) * 100
+            if fail_rate > settings.PROXY_MAX_FAIL_RATE_PCT:
                 proxy.status = ProxyStatus.INACTIVE
                 deactivated += 1
                 logger.warning(

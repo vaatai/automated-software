@@ -225,7 +225,7 @@ def _do_registration(task, registration_id: int, website_id: int) -> dict:
         if proxy:
             proxy_mgr = ProxyManager(db)
             if ok:
-                proxy_mgr.record_success(proxy.id, response_ms=elapsed_ms)
+                proxy_mgr.record_success(proxy.id)
             else:
                 proxy_mgr.record_failure(proxy.id, error=result.get("error"))
 
