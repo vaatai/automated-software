@@ -245,6 +245,14 @@ class RegistrationRequest(BaseModel):
     count: int = 1
     custom_data: dict | None = None
     priority: TaskPriority = TaskPriority.NORMAL
+    queue_overflow: bool = Field(
+        default=True,
+        description="If True, tasks exceeding daily limit are saved for next-day processing",
+    )
+    cooldown_seconds: int = Field(
+        default=30, ge=0, le=600,
+        description="Minimum seconds between registration batches for a website",
+    )
 
 
 class RegistrationResponse(BaseModel):
@@ -268,9 +276,15 @@ class BulkRegistrationResponse(BaseModel):
     total_requested: int
     total_queued: int
     total_rejected: int
+    total_overflow: int = 0
     reason: str | None = None
     task_ids: list[str] = []
+    overflow_ids: list[int] = []
     priority: str | None = None
+    daily_limit: int | None = None
+    daily_used: int | None = None
+    daily_remaining: int | None = None
+    cooldown_wait_seconds: int | None = None
 
 
 class RegistrationStats(BaseModel):
@@ -281,3 +295,4 @@ class RegistrationStats(BaseModel):
     today_failed: int
     daily_limit: int
     remaining: int
+    overflow_queued: int = 0

@@ -22,6 +22,8 @@ async def queue_registration(body: RegistrationRequest, db: AsyncSession = Depen
             count=body.count,
             custom_data=body.custom_data,
             priority=body.priority.value,
+            queue_overflow=body.queue_overflow,
+            cooldown_seconds=body.cooldown_seconds,
         )
         return BulkRegistrationResponse(**data)
     except ValueError as exc:

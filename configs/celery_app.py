@@ -76,6 +76,14 @@ task_routes = {
         "queue": "monitoring",
         "routing_key": "monitoring",
     },
+    "workers.daily_limit_worker.process_overflow_queue": {
+        "queue": "monitoring",
+        "routing_key": "monitoring",
+    },
+    "workers.daily_limit_worker.cleanup_daily_records": {
+        "queue": "monitoring",
+        "routing_key": "monitoring",
+    },
 }
 
 # ── celery app ──────────────────────────────────────────────
@@ -87,6 +95,7 @@ celery_app = Celery(
         "workers.registration_worker",
         "workers.dead_letter_worker",
         "workers.task_monitor",
+        "workers.daily_limit_worker",
     ],
 )
 
@@ -145,6 +154,16 @@ celery_app.conf.update(
         "check-stale-tasks": {
             "task": "workers.task_monitor.check_stale_tasks",
             "schedule": 300.0,  # every 5 minutes
+            "options": {"queue": "monitoring"},
+        },
+        "process-overflow-queue": {
+            "task": "workers.daily_limit_worker.process_overflow_queue",
+            "schedule": 86400.0,  # daily (runs after midnight reset)
+            "options": {"queue": "monitoring"},
+        },
+        "cleanup-daily-records": {
+            "task": "workers.daily_limit_worker.cleanup_daily_records",
+            "schedule": 604800.0,  # weekly
             "options": {"queue": "monitoring"},
         },
     },

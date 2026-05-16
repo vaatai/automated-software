@@ -1,3 +1,7 @@
+"""Registration orchestration service with daily limit enforcement,
+overflow queuing, cooldown checks, and priority routing.
+"""
+
 import logging
 from datetime import date
 
@@ -6,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.daily_limit import DailyLimit
 from models.registration import Registration, RegistrationStatus
-from models.website import Website
+from models.website import Website, WebsiteStatus
+from services.daily_limit_service import DailyLimitService
 from workers.registration_worker import (
     execute_registration,
     execute_registration_high,
@@ -17,10 +22,11 @@ logger = logging.getLogger(__name__)
 
 
 class RegistrationService:
-    """Orchestrates registration queuing and daily-limit enforcement."""
+    """Orchestrates registration queuing with daily-limit enforcement."""
 
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
+        self.limit_svc = DailyLimitService(db)
 
     async def _daily_count(self, website_id: int) -> int:
         row = await self.db.execute(
@@ -50,23 +56,69 @@ class RegistrationService:
         count: int = 1,
         custom_data: dict | None = None,
         priority: str = "normal",
+        queue_overflow: bool = True,
+        cooldown_seconds: int = 30,
     ) -> dict:
+        """Queue registrations with limit enforcement, overflow, and cooldown.
+
+        Args:
+            website_id: Target website ID
+            count: Number of registrations to queue
+            priority: Task priority (high/normal/low)
+            queue_overflow: If True, overflow tasks are saved for next-day processing
+            cooldown_seconds: Minimum seconds between registration batches
+        """
         website = (
             await self.db.execute(select(Website).where(Website.id == website_id))
         ).scalar_one_or_none()
         if not website:
             raise ValueError(f"Website {website_id} not found")
 
-        _, remaining = await self.check_daily_limit(website_id, count)
-        actual = min(count, remaining)
-
-        if actual == 0:
+        # Check if website is paused
+        if website.status == WebsiteStatus.PAUSED:
             return {
                 "total_requested": count,
                 "total_queued": 0,
                 "total_rejected": count,
+                "total_overflow": 0,
+                "reason": "Website is paused — registrations are not accepted",
+                "task_ids": [],
+                "overflow_ids": [],
+                "priority": priority,
+            }
+
+        # Check cooldown
+        cooldown = await self.limit_svc.check_cooldown(website_id, cooldown_seconds)
+        if not cooldown["ready"]:
+            return {
+                "total_requested": count,
+                "total_queued": 0,
+                "total_rejected": count,
+                "total_overflow": 0,
+                "reason": f"Cooldown active — wait {cooldown['wait_seconds']}s",
+                "task_ids": [],
+                "overflow_ids": [],
+                "priority": priority,
+                "cooldown_wait_seconds": cooldown["wait_seconds"],
+            }
+
+        # Check daily limit
+        limit_check = await self.limit_svc.check_limit(website_id, count)
+        actual = limit_check["can_queue"]
+        overflow_count = limit_check["overflow_count"]
+
+        if actual == 0 and not queue_overflow:
+            return {
+                "total_requested": count,
+                "total_queued": 0,
+                "total_rejected": count,
+                "total_overflow": 0,
                 "reason": "Daily registration limit reached",
                 "task_ids": [],
+                "overflow_ids": [],
+                "priority": priority,
+                "daily_limit": limit_check["limit"],
+                "daily_used": limit_check["used"],
             }
 
         # Select task function based on priority
@@ -76,30 +128,59 @@ class RegistrationService:
             "low": execute_registration_low,
         }.get(priority, execute_registration)
 
-        registrations: list[Registration] = []
-        for _ in range(actual):
-            reg = Registration(website_id=website_id, status=RegistrationStatus.PENDING)
-            self.db.add(reg)
-            await self.db.flush()
-            registrations.append(reg)
-
-        await self.db.commit()
-
+        # Queue what fits within limit
         task_ids: list[str] = []
-        for reg in registrations:
-            task = task_fn.delay(reg.id, website_id)
-            reg.celery_task_id = task.id
-            task_ids.append(task.id)
+        if actual > 0:
+            registrations: list[Registration] = []
+            for _ in range(actual):
+                reg = Registration(website_id=website_id, status=RegistrationStatus.PENDING)
+                self.db.add(reg)
+                await self.db.flush()
+                registrations.append(reg)
 
-        await self.db.commit()
+            await self.db.commit()
+
+            for reg in registrations:
+                task = task_fn.delay(reg.id, website_id)
+                reg.celery_task_id = task.id
+                task_ids.append(task.id)
+
+            await self.db.commit()
+
+        # Handle overflow
+        overflow_ids: list[int] = []
+        if overflow_count > 0 and queue_overflow:
+            overflow_ids = await self.limit_svc.create_overflow_registrations(
+                website_id, overflow_count
+            )
+
+        rejected = count - actual - len(overflow_ids)
+
         return {
             "total_requested": count,
             "total_queued": actual,
-            "total_rejected": count - actual,
-            "reason": "Partially limited" if count > actual else None,
+            "total_rejected": max(0, rejected),
+            "total_overflow": len(overflow_ids),
+            "reason": self._build_reason(actual, count, overflow_ids),
             "task_ids": task_ids,
+            "overflow_ids": overflow_ids,
             "priority": priority,
+            "daily_limit": limit_check["limit"],
+            "daily_used": limit_check["used"],
+            "daily_remaining": limit_check["remaining"],
         }
+
+    def _build_reason(
+        self, actual: int, requested: int, overflow_ids: list[int]
+    ) -> str | None:
+        if actual == requested:
+            return None
+        parts = []
+        if actual < requested:
+            parts.append("Daily limit partially reached")
+        if overflow_ids:
+            parts.append(f"{len(overflow_ids)} queued for next day")
+        return " — ".join(parts) if parts else None
 
     async def get_registration(self, registration_id: int) -> Registration | None:
         row = await self.db.execute(
@@ -140,6 +221,8 @@ class RegistrationService:
         success = daily.success_count if daily else 0
         failed = daily.failure_count if daily else 0
 
+        overflow = await self.limit_svc.count_overflow(website_id)
+
         return {
             "website_id": website_id,
             "website_name": website.name,
@@ -148,4 +231,5 @@ class RegistrationService:
             "today_failed": failed,
             "daily_limit": website.max_registrations_per_day,
             "remaining": max(0, website.max_registrations_per_day - total),
+            "overflow_queued": overflow,
         }
