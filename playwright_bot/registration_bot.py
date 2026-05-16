@@ -67,101 +67,103 @@ class RegistrationBot:
             async with self.manager.acquire_session(
                 session_id=session_id, proxy=proxy
             ) as session:
-                page = session.page
+                try:
+                    page = session.page
 
-                reg_data = generate_registration_data()
-                if custom_data:
-                    reg_data.update(custom_data)
-                result["username"] = reg_data.get("username")
+                    reg_data = generate_registration_data()
+                    if custom_data:
+                        reg_data.update(custom_data)
+                    result["username"] = reg_data.get("username")
 
-                # 1) provision temp email
-                if requires_email_otp:
-                    inbox = await self.mailslurp.create_inbox()
-                    inbox_id = inbox["inbox_id"]
-                    reg_data["email"] = inbox["email_address"]
-                    result["email_used"] = reg_data["email"]
+                    # 1) provision temp email
+                    if requires_email_otp:
+                        inbox = await self.mailslurp.create_inbox()
+                        inbox_id = inbox["inbox_id"]
+                        reg_data["email"] = inbox["email_address"]
+                        result["email_used"] = reg_data["email"]
 
-                # 2) provision phone number (5SIM → PVAPins fallback)
-                if requires_mobile_otp:
-                    try:
-                        num = await self.fivesim.rent_number()
-                        sms_provider = "5sim"
-                    except Exception:
-                        num = await self.pvapins.rent_number()
-                        sms_provider = "pvapins"
-                    sms_order_id = num["order_id"]
-                    reg_data["phone"] = num["phone_number"]
-                    result["phone_used"] = reg_data["phone"]
+                    # 2) provision phone number (5SIM → PVAPins fallback)
+                    if requires_mobile_otp:
+                        try:
+                            num = await self.fivesim.rent_number()
+                            sms_provider = "5sim"
+                        except Exception:
+                            num = await self.pvapins.rent_number()
+                            sms_provider = "pvapins"
+                        sms_order_id = num["order_id"]
+                        reg_data["phone"] = num["phone_number"]
+                        result["phone_used"] = reg_data["phone"]
 
-                # 3) navigate to registration page
-                form_cfg = website_config.get("form_config", {})
-                url = form_cfg.get(
-                    "registration_url", website_config.get("url", "")
-                )
-                await page.goto(
-                    url,
-                    wait_until="domcontentloaded",
-                    timeout=NAVIGATION_TIMEOUT,
-                )
-                await page.wait_for_timeout(2000)
-
-                # 4) fill fields + submit — iterate over steps
-                steps = form_cfg.get("steps", [])
-                for step_idx, step in enumerate(steps):
-                    await self._execute_step(
-                        page, step, step_idx, reg_data
+                    # 3) navigate to registration page
+                    form_cfg = website_config.get("form_config", {})
+                    url = form_cfg.get(
+                        "registration_url", website_config.get("url", "")
                     )
+                    await page.goto(
+                        url,
+                        wait_until="domcontentloaded",
+                        timeout=NAVIGATION_TIMEOUT,
+                    )
+                    await page.wait_for_timeout(2000)
 
-                # 5) email OTP
-                otp_settings = form_cfg.get("otp_settings") or {}
-                if requires_email_otp and inbox_id:
-                    otp = await self.mailslurp.get_otp(inbox_id=inbox_id)
-                    if otp:
-                        await self._enter_otp(
-                            page, otp_settings, "email_otp_field", "email_otp_submit", otp
+                    # 4) fill fields + submit — iterate over steps
+                    steps = form_cfg.get("steps", [])
+                    for step_idx, step in enumerate(steps):
+                        await self._execute_step(
+                            page, step, step_idx, reg_data
                         )
-                        result["email_otp_verified"] = True
-                    else:
-                        result["error"] = "Email OTP not received"
 
-                # 6) mobile OTP
-                if requires_mobile_otp and sms_order_id:
-                    otp = await self._get_sms_otp(sms_provider, sms_order_id)
-                    if otp:
-                        await self._enter_otp(
-                            page, otp_settings, "phone_otp_field", "phone_otp_submit", otp
-                        )
-                        result["mobile_otp_verified"] = True
-                    else:
-                        result["error"] = "Mobile OTP not received"
+                    # 5) email OTP
+                    otp_settings = form_cfg.get("otp_settings") or {}
+                    if requires_email_otp and inbox_id:
+                        otp = await self.mailslurp.get_otp(inbox_id=inbox_id)
+                        if otp:
+                            await self._enter_otp(
+                                page, otp_settings, "email_otp_field", "email_otp_submit", otp
+                            )
+                            result["email_otp_verified"] = True
+                        else:
+                            result["error"] = "Email OTP not received"
 
-                # 7) success check
-                success = form_cfg.get("success_indicator", {})
-                if success and success.get("selector"):
+                    # 6) mobile OTP
+                    if requires_mobile_otp and sms_order_id:
+                        otp = await self._get_sms_otp(sms_provider, sms_order_id)
+                        if otp:
+                            await self._enter_otp(
+                                page, otp_settings, "phone_otp_field", "phone_otp_submit", otp
+                            )
+                            result["mobile_otp_verified"] = True
+                        else:
+                            result["error"] = "Mobile OTP not received"
+
+                    # 7) success check
+                    success = form_cfg.get("success_indicator", {})
+                    if success and success.get("selector"):
+                        try:
+                            await page.wait_for_selector(
+                                success["selector"], timeout=ELEMENT_TIMEOUT
+                            )
+                            result["status"] = "completed"
+                        except Exception:
+                            result["screenshot"] = await session.screenshot("no_success")
+                    else:
+                        if not result["error"]:
+                            result["status"] = "completed"
+
+                except Exception as exc:
+                    result["error"] = str(exc)
+                    logger.exception("Registration %d failed", registration_id)
                     try:
-                        await page.wait_for_selector(
-                            success["selector"], timeout=ELEMENT_TIMEOUT
-                        )
-                        result["status"] = "completed"
+                        result["screenshot"] = await session.screenshot("exception")
                     except Exception:
-                        result["screenshot"] = await session.screenshot("no_success")
-                else:
-                    if not result["error"]:
-                        result["status"] = "completed"
-
-                # Save browser logs
-                result["browser_log"] = session.save_logs()
+                        pass
+                finally:
+                    result["browser_log"] = session.save_logs()
 
         except Exception as exc:
-            result["error"] = str(exc)
-            logger.exception("Registration %d failed", registration_id)
-            try:
-                session_obj = self.manager._active_sessions.get(session_id)
-                if session_obj:
-                    result["screenshot"] = await session_obj.screenshot("exception")
-                    result["browser_log"] = session_obj.save_logs()
-            except Exception:
-                pass
+            if not result["error"]:
+                result["error"] = str(exc)
+            logger.exception("Registration %d session error", registration_id)
         finally:
             await self._cleanup_providers(inbox_id, sms_order_id, sms_provider, result)
 
@@ -221,6 +223,10 @@ class RegistrationBot:
         otp: str,
     ) -> None:
         """Enter OTP using the nested otp_settings structure."""
+        field = otp_settings.get(field_key, {})
+        if not (field and field.get("selector")):
+            return
+
         otp_page_url = otp_settings.get("otp_page_url")
         if otp_page_url:
             await page.goto(  # type: ignore[union-attr]
@@ -228,7 +234,6 @@ class RegistrationBot:
             )
             await page.wait_for_timeout(1000)  # type: ignore[union-attr]
 
-        field = otp_settings.get(field_key, {})
         if field and field.get("selector"):
             await page.wait_for_selector(  # type: ignore[union-attr]
                 field["selector"], timeout=OTP_ELEMENT_TIMEOUT
