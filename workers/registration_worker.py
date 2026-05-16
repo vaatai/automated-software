@@ -102,14 +102,19 @@ def execute_registration(self, registration_id: int, website_id: int) -> dict:
         return result
 
     except Exception as exc:
-        db.execute(
-            update(Registration)
-            .where(Registration.id == registration_id)
-            .values(status=RegistrationStatus.FAILED, error_message=str(exc))
-        )
-        _update_daily_count(db, website_id, success=False)
+        retries_exhausted = self.request.retries >= self.max_retries
+        if retries_exhausted:
+            db.execute(
+                update(Registration)
+                .where(Registration.id == registration_id)
+                .values(status=RegistrationStatus.FAILED, error_message=str(exc))
+            )
+            _update_daily_count(db, website_id, success=False)
+            db.commit()
+            logger.exception("Registration %d permanently failed", registration_id)
+            raise
         db.commit()
-        logger.exception("Registration %d failed", registration_id)
+        logger.warning("Registration %d failed (retry %d/%d)", registration_id, self.request.retries + 1, self.max_retries)
         raise self.retry(exc=exc)
     finally:
         db.close()
