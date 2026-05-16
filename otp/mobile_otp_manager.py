@@ -23,6 +23,7 @@ Usage::
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass, field
 
 from otp.fivesim_service import FiveSimService
@@ -59,7 +60,10 @@ class MobileOTPManager:
     Providers are tried in priority order. If a provider fails due to
     number unavailability or API errors, the next provider is tried.
 
-    Thread/worker-safe: each instance manages its own state.
+    Concurrency model: asyncio-safe (one event loop, cooperative scheduling).
+    Each instance manages its own ``_active_rentals`` dict which is safe
+    under ``asyncio.gather`` since dict mutations are sequential between
+    ``await`` points.  Do **not** share a single instance across OS threads.
     """
 
     def __init__(
@@ -90,6 +94,8 @@ class MobileOTPManager:
         self._poll_timeout = poll_timeout
         self._poll_interval = poll_interval
         self._active_rentals: dict[str, tuple[SMSProviderAdapter, RentalResult]] = {}
+        self._status_cache: dict[str, tuple[ProviderStatus, float]] = {}
+        self._status_cache_ttl = 60.0  # seconds
 
     @property
     def providers(self) -> list[str]:
@@ -123,7 +129,7 @@ class MobileOTPManager:
         providers = self._get_provider_order(preferred_provider)
 
         for provider in providers:
-            status = await provider.get_status()
+            status = await self._get_cached_status(provider)
             if status in (ProviderStatus.DISABLED, ProviderStatus.ERROR):
                 logger.info(
                     "Skipping %s (status=%s)", provider.provider_name, status.value
@@ -228,7 +234,7 @@ class MobileOTPManager:
         attempts: list[dict] = []
 
         for provider in providers:
-            status = await provider.get_status()
+            status = await self._get_cached_status(provider)
             if status in (ProviderStatus.DISABLED, ProviderStatus.ERROR):
                 attempts.append({
                     "provider": provider.provider_name,
@@ -349,6 +355,19 @@ class MobileOTPManager:
         return balances
 
     # ── internal ───────────────────────────────────────────
+
+    async def _get_cached_status(self, provider: SMSProviderAdapter) -> ProviderStatus:
+        """Get provider status with short TTL cache to avoid extra API calls."""
+        name = provider.provider_name
+        cached = self._status_cache.get(name)
+        if cached:
+            status, ts = cached
+            if time.monotonic() - ts < self._status_cache_ttl:
+                return status
+
+        status = await provider.get_status()
+        self._status_cache[name] = (status, time.monotonic())
+        return status
 
     def _get_provider_order(
         self, preferred: str | None = None

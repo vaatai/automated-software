@@ -52,6 +52,12 @@ class PVAPinsService(BaseOTPService, SMSProviderAdapter):
         service: str = "opt4",
         operator: str = "any",
     ) -> RentalResult:
+        """Rent a number from PVAPins.
+
+        Defaults differ from the abstract interface (``country='US'``,
+        ``service='opt4'``) to match PVAPins API conventions.  When
+        called via ``MobileOTPManager``, kwargs are always explicit.
+        """
         async with httpx.AsyncClient() as client:
             try:
                 resp = await client.get(

@@ -23,8 +23,6 @@ from otp.sms_provider import (
 
 logger = logging.getLogger(__name__)
 
-SMSACTIVATE_BASE = "https://api.sms-activate.org/stubs/handler_api.php"
-
 
 class SMSActivateService(BaseOTPService, SMSProviderAdapter):
     """Backup SMS OTP provider via SMS-Activate.
@@ -35,7 +33,7 @@ class SMSActivateService(BaseOTPService, SMSProviderAdapter):
 
     def __init__(self, api_key: str | None = None):
         self._api_key = api_key or settings.SMSACTIVATE_API_KEY
-        self._base_url = SMSACTIVATE_BASE
+        self._base_url = settings.SMSACTIVATE_BASE_URL
 
     @property
     def provider_name(self) -> str:
