@@ -31,7 +31,13 @@ services:
 
   celery_worker:
     build: .
-    command: celery -A configs.celery_app worker --loglevel=info --concurrency=5
+    command: >
+      celery -A configs.celery_app worker
+      --loglevel=info
+      --concurrency=5
+      --queues=registrations,registrations.high,registrations.low
+      --max-tasks-per-child=50
+      --max-memory-per-child=512000
     env_file:
       - .env
     depends_on:
@@ -40,6 +46,22 @@ services:
     volumes:
       - .:/app
       - screenshots:/app/screenshots
+      - browser_logs:/app/browser_logs
+
+  celery_dlq_worker:
+    build: .
+    command: >
+      celery -A configs.celery_app worker
+      --loglevel=info
+      --concurrency=2
+      --queues=dead_letter,monitoring
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - .:/app
 
   celery_beat:
     build: .
@@ -50,6 +72,17 @@ services:
       - db
       - redis
 
+  flower:
+    build: .
+    command: celery -A configs.celery_app flower --port=5555
+    ports:
+      - "5555:5555"
+    env_file:
+      - .env
+    depends_on:
+      - redis
+
 volumes:
   postgres_data:
   screenshots:
+  browser_logs:

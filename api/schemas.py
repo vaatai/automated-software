@@ -234,10 +234,17 @@ class WebsiteDeleteResponse(BaseModel):
 # ────────────────────────────────────────────────────────────
 
 
+class TaskPriority(str, Enum):
+    HIGH = "high"
+    NORMAL = "normal"
+    LOW = "low"
+
+
 class RegistrationRequest(BaseModel):
     website_id: int
     count: int = 1
     custom_data: dict | None = None
+    priority: TaskPriority = TaskPriority.NORMAL
 
 
 class RegistrationResponse(BaseModel):
@@ -263,6 +270,7 @@ class BulkRegistrationResponse(BaseModel):
     total_rejected: int
     reason: str | None = None
     task_ids: list[str] = []
+    priority: str | None = None
 
 
 class RegistrationStats(BaseModel):
