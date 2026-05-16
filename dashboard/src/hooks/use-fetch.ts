@@ -42,7 +42,7 @@ export function useFetch<T>(
 
   const depsKey = JSON.stringify(deps);
   const fetcherRef = useRef(fetcher);
-  const [, forceRefetch] = useReducer((x: number) => x + 1, 0);
+  const [refetchCount, forceRefetch] = useReducer((x: number) => x + 1, 0);
 
   useEffect(() => {
     fetcherRef.current = fetcher;
@@ -75,7 +75,7 @@ export function useFetch<T>(
       cancelled = true;
       mountedRef.current = false;
     };
-  }, [depsKey, forceRefetch]);
+  }, [depsKey, refetchCount]);
 
   useEffect(() => {
     if (!interval) return;
