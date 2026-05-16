@@ -22,12 +22,13 @@ from sqlalchemy.orm import Session, sessionmaker
 from configs.celery_app import celery_app
 from configs.settings import settings
 from models.daily_limit import DailyLimit
-from models.proxy import Proxy, ProxyStatus
+from models.proxy import Proxy
 from models.registration import Registration, RegistrationStatus
 from models.task_log import LogLevel, TaskLog
 from models.website import Website
 from playwright_bot.browser_manager import BrowserManager
 from playwright_bot.registration_bot import RegistrationBot
+from services.proxy_manager import ProxyManager
 
 logger = logging.getLogger(__name__)
 
@@ -100,19 +101,12 @@ def _update_daily_count(db: Session, website_id: int, *, success: bool) -> None:
         )
 
 
-def _assign_proxy(db: Session) -> Proxy | None:
-    """Pick the least-recently-used active proxy from the pool."""
-    proxy = db.execute(
-        select(Proxy)
-        .where(Proxy.status == ProxyStatus.ACTIVE, Proxy.deleted_at.is_(None))
-        .order_by(Proxy.last_used_at.asc().nulls_first())
-        .limit(1)
-    ).scalar_one_or_none()
-
-    if proxy:
-        proxy.last_used_at = datetime.now(timezone.utc)
-        db.flush()
-    return proxy
+def _assign_proxy(db: Session, country: str | None = None) -> Proxy | None:
+    """Assign a proxy via ProxyManager with LRU rotation."""
+    mgr = ProxyManager(db)
+    if country:
+        return mgr.assign_proxy_for_country(country, fallback=True)
+    return mgr.assign_proxy()
 
 
 # ── shared registration logic (plain function, not a task) ──
@@ -227,12 +221,13 @@ def _do_registration(task, registration_id: int, website_id: int) -> dict:
             duration_ms=elapsed_ms,
         )
 
-        # Update proxy stats
+        # Update proxy stats via ProxyManager
         if proxy:
+            proxy_mgr = ProxyManager(db)
             if ok:
-                proxy.success_count += 1
+                proxy_mgr.record_success(proxy.id, response_ms=elapsed_ms)
             else:
-                proxy.fail_count += 1
+                proxy_mgr.record_failure(proxy.id, error=result.get("error"))
 
         db.commit()
         return result

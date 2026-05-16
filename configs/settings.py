@@ -40,8 +40,12 @@ class Settings(BaseSettings):
     MAILSLURP_WEBHOOK_URL: str = ""
     MAILSLURP_INBOX_EXPIRY_MS: int = 600_000
 
-    # --- Proxy (optional) ---
+    # --- Proxy Management ---
     PROXY_URL: str = ""
+    PROXY_BAN_THRESHOLD: int = 5
+    PROXY_COOLDOWN_SECONDS: int = 60
+    PROXY_RATE_LIMIT_COOLDOWN: int = 300
+    PROXY_MAX_FAIL_RATE_PCT: int = 50
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 
