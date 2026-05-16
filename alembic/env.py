@@ -1,13 +1,16 @@
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from alembic import context
 from configs.database import Base
 from configs.settings import settings
 from models.daily_limit import DailyLimit  # noqa: F401
 from models.otp_config import OTPConfig  # noqa: F401
+from models.proxy import Proxy  # noqa: F401
 from models.registration import Registration  # noqa: F401
+from models.rental_number import RentalNumber  # noqa: F401
+from models.task_log import TaskLog  # noqa: F401
 from models.website import Website  # noqa: F401
 
 config = context.config
