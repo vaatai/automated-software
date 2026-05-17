@@ -1,12 +1,29 @@
-"""Registration bot — drives multi-step form filling using BrowserManager sessions."""
+"""Registration bot — drives multi-step form filling using BrowserManager sessions.
+
+Integrates centralized error handling for:
+  - Screenshot + HTML snapshot capture on every failure
+  - Browser console + network request logging
+  - CAPTCHA detection, selector change detection
+  - OTP timeout tracking
+  - Proxy ban detection
+  - Rich ErrorContext for post-mortem debugging
+"""
 
 import logging
+import time
 
 from otp.fivesim_service import FiveSimService
 from otp.mailslurp_service import MailSlurpService
 from otp.pvapins_service import PVAPinsService
-from playwright_bot.browser_manager import BrowserManager
+from playwright_bot.browser_manager import BrowserManager, BrowserSession
 from utils.data_generator import generate_registration_data
+from utils.error_handler import ErrorCategory, ErrorContext, ErrorHandler
+from utils.failure_detectors import (
+    CaptchaDetector,
+    OTPTimeoutDetector,
+    ProxyBanDetector,
+    SelectorChangeDetector,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +44,11 @@ class RegistrationBot:
         form_config.otp_settings   — OTP field selectors
         form_config.captcha_settings (not yet automated)
         form_config.success_indicator
+
+    Error handling:
+        Every failure produces a rich :class:`ErrorContext` with screenshots,
+        HTML snapshots, browser logs, and failure classification.
+        The error context is attached to the result dict under ``error_context``.
     """
 
     def __init__(self, browser_manager: BrowserManager) -> None:
@@ -34,6 +56,11 @@ class RegistrationBot:
         self.mailslurp = MailSlurpService()
         self.fivesim = FiveSimService()
         self.pvapins = PVAPinsService()
+
+        # Failure detectors
+        self._captcha_detector = CaptchaDetector()
+        self._selector_detector = SelectorChangeDetector()
+        self._proxy_ban_detector = ProxyBanDetector()
 
     async def register(
         self,
@@ -43,8 +70,19 @@ class RegistrationBot:
         requires_mobile_otp: bool = False,
         custom_data: dict | None = None,
         proxy: dict | None = None,
+        attempt_number: int = 1,
     ) -> dict:
-        """Execute a full registration flow inside an isolated browser session."""
+        """Execute a full registration flow inside an isolated browser session.
+
+        Returns a result dict. On failure, ``result["error_context"]`` contains
+        a serialized :class:`ErrorContext` with full debugging information.
+        """
+        error_handler = ErrorHandler(
+            registration_id=registration_id,
+            attempt_number=attempt_number,
+        )
+        start_time = time.monotonic()
+
         result: dict = {
             "registration_id": registration_id,
             "status": "failed",
@@ -54,8 +92,11 @@ class RegistrationBot:
             "email_otp_verified": False,
             "mobile_otp_verified": False,
             "error": None,
+            "error_context": None,
             "screenshot": None,
+            "html_snapshot": None,
             "browser_log": None,
+            "browser_log_json": None,
         }
         inbox_id: str | None = None
         sms_order_id: str | None = None
@@ -64,9 +105,7 @@ class RegistrationBot:
         session_id = f"reg-{registration_id}"
 
         try:
-            async with self.manager.acquire_session(
-                session_id=session_id, proxy=proxy
-            ) as session:
+            async with self.manager.acquire_session(session_id=session_id, proxy=proxy) as session:
                 try:
                     page = session.page
 
@@ -96,9 +135,7 @@ class RegistrationBot:
 
                     # 3) navigate to registration page
                     form_cfg = website_config.get("form_config", {})
-                    url = form_cfg.get(
-                        "registration_url", website_config.get("url", "")
-                    )
+                    url = form_cfg.get("registration_url", website_config.get("url", ""))
                     await page.goto(
                         url,
                         wait_until="domcontentloaded",
@@ -106,35 +143,99 @@ class RegistrationBot:
                     )
                     await page.wait_for_timeout(2000)
 
+                    # 3a) check for CAPTCHA / proxy ban after navigation
+                    page_check = await self._check_page_after_navigation(session, error_handler)
+                    if page_check is not None:
+                        result["error"] = page_check.error_message
+                        result["error_context"] = page_check.to_dict()
+                        result["screenshot"] = page_check.screenshot_path
+                        result["html_snapshot"] = page_check.html_snapshot_path
+                        return result
+
+                    # 3b) validate selectors before filling
+                    selector_failures = await self._validate_selectors(page, form_cfg)
+                    if selector_failures:
+                        elapsed_ms = int((time.monotonic() - start_time) * 1000)
+                        ctx = ErrorContext(
+                            registration_id=registration_id,
+                            category=ErrorCategory.SELECTOR_CHANGED,
+                            error_type="SelectorChanged",
+                            error_message=f"Selectors not found: {', '.join(selector_failures)}",
+                            selector_failures=selector_failures,
+                            step_name="selector_validation",
+                            attempt_number=attempt_number,
+                            elapsed_ms=elapsed_ms,
+                        )
+                        await error_handler._capture_browser_state(ctx, session)
+                        error_handler._save_debug_report(ctx)
+                        result["error"] = ctx.error_message
+                        result["error_context"] = ctx.to_dict()
+                        result["screenshot"] = ctx.screenshot_path
+                        result["html_snapshot"] = ctx.html_snapshot_path
+                        return result
+
                     # 4) fill fields + submit — iterate over steps
                     steps = form_cfg.get("steps", [])
                     for step_idx, step in enumerate(steps):
-                        await self._execute_step(
-                            page, step, step_idx, reg_data
+                        await self._execute_step(page, step, step_idx, reg_data)
+                        # Check page state after each step
+                        step_check = await error_handler.check_page_state(
+                            session, step=f"step_{step_idx}_submit"
                         )
+                        if step_check is not None:
+                            result["error"] = step_check.error_message
+                            result["error_context"] = step_check.to_dict()
+                            result["screenshot"] = step_check.screenshot_path
+                            return result
 
                     # 5) email OTP
                     otp_settings = form_cfg.get("otp_settings") or {}
                     if requires_email_otp and inbox_id:
-                        otp = await self.mailslurp.get_otp(inbox_id=inbox_id)
+                        otp = await self._get_email_otp_with_tracking(inbox_id, error_handler)
                         if otp:
                             await self._enter_otp(
                                 page, otp_settings, "email_otp_field", "email_otp_submit", otp
                             )
                             result["email_otp_verified"] = True
                         else:
-                            result["error"] = "Email OTP not received"
+                            elapsed_ms = int((time.monotonic() - start_time) * 1000)
+                            ctx = ErrorContext(
+                                registration_id=registration_id,
+                                category=ErrorCategory.OTP_TIMEOUT,
+                                error_type="OTPTimeout",
+                                error_message="Email OTP not received within timeout",
+                                step_name="email_otp",
+                                attempt_number=attempt_number,
+                                elapsed_ms=elapsed_ms,
+                            )
+                            error_handler._save_debug_report(ctx)
+                            result["error"] = ctx.error_message
+                            result["error_context"] = ctx.to_dict()
 
                     # 6) mobile OTP
                     if requires_mobile_otp and sms_order_id:
-                        otp = await self._get_sms_otp(sms_provider, sms_order_id)
+                        otp = await self._get_sms_otp_with_tracking(
+                            sms_provider, sms_order_id, error_handler
+                        )
                         if otp:
                             await self._enter_otp(
                                 page, otp_settings, "phone_otp_field", "phone_otp_submit", otp
                             )
                             result["mobile_otp_verified"] = True
                         else:
-                            result["error"] = "Mobile OTP not received"
+                            elapsed_ms = int((time.monotonic() - start_time) * 1000)
+                            ctx = ErrorContext(
+                                registration_id=registration_id,
+                                category=ErrorCategory.OTP_TIMEOUT,
+                                error_type="OTPTimeout",
+                                error_message="Mobile OTP not received within timeout",
+                                step_name="mobile_otp",
+                                attempt_number=attempt_number,
+                                elapsed_ms=elapsed_ms,
+                            )
+                            error_handler._save_debug_report(ctx)
+                            result["error"] = ctx.error_message
+                            result["error_context"] = ctx.to_dict()
 
                     # 7) success check
                     success = form_cfg.get("success_indicator", {})
@@ -146,28 +247,115 @@ class RegistrationBot:
                             result["status"] = "completed"
                         except Exception:
                             result["screenshot"] = await session.screenshot("no_success")
+                            result["html_snapshot"] = await session.html_snapshot("no_success")
                     else:
                         if not result["error"]:
                             result["status"] = "completed"
 
                 except Exception as exc:
-                    result["error"] = str(exc)
+                    elapsed_ms = int((time.monotonic() - start_time) * 1000)
+                    ctx = await error_handler.handle_error(
+                        exc,
+                        session=session,
+                        step="registration_flow",
+                        elapsed_ms=elapsed_ms,
+                        proxy_used=str(proxy.get("server", "")) if proxy else "",
+                    )
+                    result["error"] = ctx.error_message
+                    result["error_context"] = ctx.to_dict()
+                    result["screenshot"] = ctx.screenshot_path
+                    result["html_snapshot"] = ctx.html_snapshot_path
                     logger.exception("Registration %d failed", registration_id)
-                    try:
-                        result["screenshot"] = await session.screenshot("exception")
-                    except Exception:
-                        pass
+
                 finally:
                     result["browser_log"] = session.save_logs()
+                    result["browser_log_json"] = session.save_logs_json()
 
         except Exception as exc:
+            elapsed_ms = int((time.monotonic() - start_time) * 1000)
+            ctx = await error_handler.handle_error(
+                exc,
+                step="session_acquire",
+                elapsed_ms=elapsed_ms,
+            )
             if not result["error"]:
-                result["error"] = str(exc)
+                result["error"] = ctx.error_message
+            result["error_context"] = ctx.to_dict()
             logger.exception("Registration %d session error", registration_id)
         finally:
             await self._cleanup_providers(inbox_id, sms_order_id, sms_provider, result)
 
         return result
+
+    # ── page state checks ──────────────────────────────────
+
+    async def _check_page_after_navigation(
+        self,
+        session: BrowserSession,
+        error_handler: ErrorHandler,
+    ) -> ErrorContext | None:
+        """Check for CAPTCHA walls and proxy bans after page load.
+
+        Constructs ErrorContext directly from detector results rather than
+        delegating to check_page_state, so HTTP-status-only detections
+        (e.g. 403 with generic HTML) are never silently dropped.
+        """
+        try:
+            html = await session.page.content()
+        except Exception:
+            return None
+
+        # CAPTCHA check
+        captcha_result = self._captcha_detector.detect(
+            html,
+            network_urls=[r["url"] for r in session.network_requests],
+        )
+        if captcha_result.detected:
+            ctx = ErrorContext(
+                registration_id=error_handler.registration_id,
+                category=ErrorCategory.CAPTCHA_DETECTED,
+                error_type="CaptchaDetected",
+                error_message=f"CAPTCHA detected: {captcha_result.captcha_type}",
+                captcha_detected=True,
+                captcha_type=captcha_result.captcha_type,
+                step_name="navigation",
+                attempt_number=error_handler.attempt_number,
+            )
+            await error_handler._capture_browser_state(ctx, session)
+            error_handler._save_debug_report(ctx)
+            return ctx
+
+        # Proxy ban check
+        status_code = session.last_navigation_status
+        ban_result = self._proxy_ban_detector.detect_from_page(html, status_code=status_code)
+        if ban_result.banned or ban_result.rate_limited:
+            category = (
+                ErrorCategory.PROXY_BAN if ban_result.banned else ErrorCategory.PROXY_RATE_LIMITED
+            )
+            ctx = ErrorContext(
+                registration_id=error_handler.registration_id,
+                category=category,
+                error_type="ProxyBanDetected" if ban_result.banned else "ProxyRateLimited",
+                error_message=f"Proxy {'banned' if ban_result.banned else 'rate-limited'}: "
+                f"{', '.join(ban_result.indicators)}",
+                proxy_ban_indicators=ban_result.indicators,
+                step_name="navigation",
+                attempt_number=error_handler.attempt_number,
+            )
+            await error_handler._capture_browser_state(ctx, session)
+            error_handler._save_debug_report(ctx)
+            return ctx
+
+        return None
+
+    async def _validate_selectors(
+        self,
+        page: object,
+        form_cfg: dict,
+    ) -> list[str]:
+        """Pre-validate configured selectors, return list of missing ones."""
+        results = await self._selector_detector.check_selectors(page, form_cfg)
+        return [r.selector for r in results if not r.found]
 
     # ── step execution ─────────────────────────────────────
 
@@ -243,6 +431,50 @@ class RegistrationBot:
             if submit and submit.get("selector"):
                 await page.click(submit["selector"])  # type: ignore[union-attr]
                 await page.wait_for_timeout(3000)  # type: ignore[union-attr]
+
+    async def _get_email_otp_with_tracking(
+        self,
+        inbox_id: str,
+        error_handler: ErrorHandler,
+    ) -> str | None:
+        """Poll for email OTP with timeout tracking."""
+        tracker = OTPTimeoutDetector(max_wait_seconds=120.0)
+        tracker.start_polling()
+        otp = await self.mailslurp.get_otp(inbox_id=inbox_id)
+        if not otp:
+            timeout_result = tracker.build_timeout_result(
+                otp_type="email",
+                provider="mailslurp",
+                inbox_id=inbox_id,
+            )
+            logger.warning(
+                "Email OTP timeout: waited %.1fs, %d polls",
+                timeout_result.wait_seconds,
+                timeout_result.poll_attempts,
+            )
+        return otp
+
+    async def _get_sms_otp_with_tracking(
+        self,
+        provider: str | None,
+        order_id: str,
+        error_handler: ErrorHandler,
+    ) -> str | None:
+        """Poll for SMS OTP with timeout tracking."""
+        tracker = OTPTimeoutDetector(max_wait_seconds=120.0)
+        tracker.start_polling()
+        otp = await self._get_sms_otp(provider, order_id)
+        if not otp:
+            timeout_result = tracker.build_timeout_result(
+                otp_type="mobile",
+                provider=provider or "unknown",
+            )
+            logger.warning(
+                "Mobile OTP timeout: waited %.1fs, %d polls",
+                timeout_result.wait_seconds,
+                timeout_result.poll_attempts,
+            )
+        return otp
 
     async def _get_sms_otp(self, provider: str | None, order_id: str) -> str | None:
         if provider == "5sim":

@@ -47,6 +47,15 @@ class Settings(BaseSettings):
     PROXY_RATE_LIMIT_COOLDOWN: int = 300
     PROXY_MAX_FAIL_RATE_PCT: int = 50
 
+    # --- Error Handling & Resilience ---
+    ERROR_SCREENSHOT_ON_FAILURE: bool = True
+    ERROR_HTML_SNAPSHOT_ON_FAILURE: bool = True
+    ERROR_BROWSER_LOG_ON_FAILURE: bool = True
+    ERROR_NETWORK_LOG_ON_FAILURE: bool = True
+    ERROR_MAX_CONSOLE_LOGS: int = 50
+    ERROR_MAX_NETWORK_LOGS: int = 200
+    ERROR_MAX_DEBUG_REPORTS_DAYS: int = 7
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 

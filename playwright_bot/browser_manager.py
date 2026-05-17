@@ -3,9 +3,15 @@
 Manages a shared browser instance and hands out isolated browser contexts
 with stealth, fingerprint randomization, proxy rotation, and log capture.
 Designed for use by multiple concurrent Celery workers.
+
+Enhanced with:
+  - Full network request/response logging (not just failures)
+  - HTML snapshot capture for post-mortem debugging
+  - Response status tracking for proxy ban detection
 """
 
 import asyncio
+import json
 import logging
 import os
 from datetime import datetime, timezone
@@ -15,6 +21,8 @@ from playwright.async_api import (
     BrowserContext,
     Page,
     Playwright,
+    Request,
+    Response,
     async_playwright,
 )
 
@@ -30,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 SCREENSHOT_DIR = "screenshots"
 LOG_DIR = "browser_logs"
+HTML_SNAPSHOT_DIR = "html_snapshots"
 
 
 class BrowserSession:
@@ -46,24 +55,52 @@ class BrowserSession:
         self.session_id = session_id
         self._console_logs: list[dict] = []
         self._request_logs: list[dict] = []
+        self._network_requests: list[dict] = []
+        self._response_status_codes: dict[str, int] = {}
 
         # Wire up log capture
         self.page.on("console", self._on_console)
         self.page.on("requestfailed", self._on_request_failed)
+        self.page.on("request", self._on_request)
+        self.page.on("response", self._on_response)
 
     def _on_console(self, msg: object) -> None:
-        self._console_logs.append({
-            "type": getattr(msg, "type", "unknown"),
-            "text": str(msg),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
+        self._console_logs.append(
+            {
+                "type": getattr(msg, "type", "unknown"),
+                "text": str(msg),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
 
     def _on_request_failed(self, request: object) -> None:
-        self._request_logs.append({
-            "url": getattr(request, "url", ""),
-            "failure": str(getattr(request, "failure", "")),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        })
+        self._request_logs.append(
+            {
+                "url": getattr(request, "url", ""),
+                "method": getattr(request, "method", ""),
+                "failure": str(getattr(request, "failure", "")),
+                "resource_type": getattr(request, "resource_type", ""),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+
+    def _on_request(self, request: Request) -> None:
+        self._network_requests.append(
+            {
+                "url": request.url,
+                "method": request.method,
+                "resource_type": request.resource_type,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+
+    def _on_response(self, response: Response) -> None:
+        self._response_status_codes[response.url] = response.status
+        # Enrich the matching network request entry
+        for entry in reversed(self._network_requests):
+            if entry["url"] == response.url and "status" not in entry:
+                entry["status"] = response.status
+                break
 
     @property
     def console_logs(self) -> list[dict]:
@@ -72,6 +109,18 @@ class BrowserSession:
     @property
     def request_logs(self) -> list[dict]:
         return self._request_logs
+
+    @property
+    def network_requests(self) -> list[dict]:
+        return self._network_requests
+
+    @property
+    def last_navigation_status(self) -> int | None:
+        """HTTP status code of the most recent document navigation."""
+        for entry in reversed(self._network_requests):
+            if entry.get("resource_type") == "document" and "status" in entry:
+                return entry["status"]
+        return None
 
     async def screenshot(self, label: str = "error") -> str:
         """Capture a full-page screenshot and return the file path."""
@@ -82,9 +131,24 @@ class BrowserSession:
         logger.info("Screenshot saved: %s", path)
         return path
 
+    async def html_snapshot(self, label: str = "error") -> str:
+        """Capture the current page HTML and return the file path."""
+        os.makedirs(HTML_SNAPSHOT_DIR, exist_ok=True)
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        path = f"{HTML_SNAPSHOT_DIR}/{self.session_id}_{label}_{ts}.html"
+        try:
+            html = await self.page.content()
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(html)
+            logger.info("HTML snapshot saved: %s", path)
+        except Exception as e:
+            logger.debug("HTML snapshot capture failed: %s", e)
+            return ""
+        return path
+
     def save_logs(self) -> str | None:
         """Write captured browser logs to disk and return the file path."""
-        if not self._console_logs and not self._request_logs:
+        if not self._console_logs and not self._request_logs and not self._network_requests:
             return None
         os.makedirs(LOG_DIR, exist_ok=True)
         ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
@@ -95,8 +159,37 @@ class BrowserSession:
                 f.write(f"[{entry['timestamp']}] [{entry['type']}] {entry['text']}\n")
             f.write(f"\n=== Failed Requests ({len(self._request_logs)}) ===\n")
             for entry in self._request_logs:
-                f.write(f"[{entry['timestamp']}] {entry['url']} — {entry['failure']}\n")
+                f.write(
+                    f"[{entry['timestamp']}] {entry.get('method', '')} "
+                    f"{entry['url']} — {entry['failure']}\n"
+                )
+            f.write(f"\n=== Network Requests ({len(self._network_requests)}) ===\n")
+            for entry in self._network_requests:
+                status = entry.get("status", "-")
+                f.write(
+                    f"[{entry['timestamp']}] {entry.get('method', '')} "
+                    f"{entry['url']} [{status}] ({entry.get('resource_type', '')})\n"
+                )
         logger.info("Browser logs saved: %s", path)
+        return path
+
+    def save_logs_json(self) -> str | None:
+        """Write captured logs as structured JSON for programmatic analysis."""
+        if not self._console_logs and not self._request_logs and not self._network_requests:
+            return None
+        os.makedirs(LOG_DIR, exist_ok=True)
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        path = f"{LOG_DIR}/{self.session_id}_{ts}.json"
+        data = {
+            "session_id": self.session_id,
+            "captured_at": datetime.now(timezone.utc).isoformat(),
+            "console_logs": self._console_logs,
+            "failed_requests": self._request_logs,
+            "network_requests": self._network_requests[-200:],
+        }
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2, default=str)
+        logger.info("Browser logs (JSON) saved: %s", path)
         return path
 
     async def close(self) -> None:

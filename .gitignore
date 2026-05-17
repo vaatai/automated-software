@@ -25,8 +25,11 @@ env/
 *.db
 *.sqlite3
 
-# Screenshots
+# Screenshots & debug artifacts
 screenshots/
+html_snapshots/
+debug_reports/
+browser_logs/
 
 # OS
 .DS_Store
