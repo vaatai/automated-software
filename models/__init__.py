@@ -4,6 +4,7 @@ from models.proxy import Proxy
 from models.registration import Registration
 from models.rental_number import RentalNumber
 from models.task_log import TaskLog
+from models.user import User
 from models.website import Website
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "RentalNumber",
     "Proxy",
     "TaskLog",
+    "User",
 ]
