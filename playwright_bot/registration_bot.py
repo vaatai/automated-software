@@ -294,7 +294,12 @@ class RegistrationBot:
         session: BrowserSession,
         error_handler: ErrorHandler,
     ) -> ErrorContext | None:
-        """Check for CAPTCHA walls and proxy bans after page load."""
+        """Check for CAPTCHA walls and proxy bans after page load.
+
+        Constructs ErrorContext directly from detector results rather than
+        delegating to check_page_state, so HTTP-status-only detections
+        (e.g. 403 with generic HTML) are never silently dropped.
+        """
         try:
             html = await session.page.content()
         except Exception:
@@ -306,11 +311,19 @@ class RegistrationBot:
             network_urls=[r["url"] for r in session.network_requests],
         )
         if captcha_result.detected:
-            ctx = await error_handler.check_page_state(session, step="navigation")
-            if ctx is not None:
-                ctx.captcha_detected = True
-                ctx.captcha_type = captcha_result.captcha_type
-                return ctx
+            ctx = ErrorContext(
+                registration_id=error_handler.registration_id,
+                category=ErrorCategory.CAPTCHA_DETECTED,
+                error_type="CaptchaDetected",
+                error_message=f"CAPTCHA detected: {captcha_result.captcha_type}",
+                captcha_detected=True,
+                captcha_type=captcha_result.captcha_type,
+                step_name="navigation",
+                attempt_number=error_handler.attempt_number,
+            )
+            await error_handler._capture_browser_state(ctx, session)
+            error_handler._save_debug_report(ctx)
+            return ctx
 
         # Proxy ban check
         status_code = session.last_navigation_status
@@ -319,11 +332,19 @@ class RegistrationBot:
             category = (
                 ErrorCategory.PROXY_BAN if ban_result.banned else ErrorCategory.PROXY_RATE_LIMITED
             )
-            ctx = await error_handler.check_page_state(session, step="navigation")
-            if ctx is not None:
-                ctx.category = category
-                ctx.proxy_ban_indicators = ban_result.indicators
-                return ctx
+            ctx = ErrorContext(
+                registration_id=error_handler.registration_id,
+                category=category,
+                error_type="ProxyBanDetected" if ban_result.banned else "ProxyRateLimited",
+                error_message=f"Proxy {'banned' if ban_result.banned else 'rate-limited'}: "
+                f"{', '.join(ban_result.indicators)}",
+                proxy_ban_indicators=ban_result.indicators,
+                step_name="navigation",
+                attempt_number=error_handler.attempt_number,
+            )
+            await error_handler._capture_browser_state(ctx, session)
+            error_handler._save_debug_report(ctx)
+            return ctx
 
         return None
 

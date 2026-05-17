@@ -145,7 +145,12 @@ def _classify_result_error(result: dict) -> ErrorCategory | None:
 
 
 # ── shared registration logic (plain function, not a task) ──
-def _do_registration(task, registration_id: int, website_id: int) -> dict:
+def _do_registration(
+    task,
+    registration_id: int,
+    website_id: int,
+    failed_proxy_ids: list[int] | None = None,
+) -> dict:
     """Core registration logic shared by all priority variants.
 
     Accepts the bound Celery task instance so that self.request.id,
@@ -159,11 +164,16 @@ def _do_registration(task, registration_id: int, website_id: int) -> dict:
       are sent to the dead-letter queue immediately
     - CAPTCHA/selector-changed errors go to DLQ (need human intervention)
     - Proxy ban triggers proxy swap before retry
+
+    Args:
+        failed_proxy_ids: Proxy IDs that failed on previous attempts,
+            passed through Celery retry kwargs to persist across retries.
     """
     db = _get_db()
     task_id = task.request.id
     start_time = time.monotonic()
-    failed_proxy_ids: list[int] = []
+    if failed_proxy_ids is None:
+        failed_proxy_ids = []
 
     try:
         # Load website config
@@ -358,6 +368,11 @@ def _do_registration(task, registration_id: int, website_id: int) -> dict:
                 db.commit()
                 raise task.retry(
                     exc=Exception(result.get("error", "Retriable failure")),
+                    kwargs={
+                        "registration_id": registration_id,
+                        "website_id": website_id,
+                        "failed_proxy_ids": failed_proxy_ids,
+                    },
                 )
             else:
                 _update_daily_count(db, website_id, success=False)
@@ -377,6 +392,7 @@ def _do_registration(task, registration_id: int, website_id: int) -> dict:
                     website_id,
                     result.get("error", "unknown"),
                 )
+                return result
 
         if not ok:
             _update_daily_count(db, website_id, success=False)
@@ -509,9 +525,14 @@ def _do_registration(task, registration_id: int, website_id: int) -> dict:
     soft_time_limit=300,
     time_limit=600,
 )
-def execute_registration(self, registration_id: int, website_id: int) -> dict:
+def execute_registration(
+    self,
+    registration_id: int,
+    website_id: int,
+    failed_proxy_ids: list[int] | None = None,
+) -> dict:
     """Normal-priority registration (queue: registrations)."""
-    return _do_registration(self, registration_id, website_id)
+    return _do_registration(self, registration_id, website_id, failed_proxy_ids)
 
 
 @celery_app.task(
@@ -530,9 +551,14 @@ def execute_registration(self, registration_id: int, website_id: int) -> dict:
     time_limit=600,
     priority=2,
 )
-def execute_registration_high(self, registration_id: int, website_id: int) -> dict:
+def execute_registration_high(
+    self,
+    registration_id: int,
+    website_id: int,
+    failed_proxy_ids: list[int] | None = None,
+) -> dict:
     """High-priority registration (queue: registrations.high)."""
-    return _do_registration(self, registration_id, website_id)
+    return _do_registration(self, registration_id, website_id, failed_proxy_ids)
 
 
 @celery_app.task(
@@ -551,9 +577,14 @@ def execute_registration_high(self, registration_id: int, website_id: int) -> di
     time_limit=600,
     priority=8,
 )
-def execute_registration_low(self, registration_id: int, website_id: int) -> dict:
+def execute_registration_low(
+    self,
+    registration_id: int,
+    website_id: int,
+    failed_proxy_ids: list[int] | None = None,
+) -> dict:
     """Low-priority registration (queue: registrations.low)."""
-    return _do_registration(self, registration_id, website_id)
+    return _do_registration(self, registration_id, website_id, failed_proxy_ids)
 
 
 # ── async registration runner ───────────────────────────────
