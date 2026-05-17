@@ -1,3 +1,7 @@
+# ---------------------------------------------------------------------------
+# Development docker-compose — all services with hot reload
+# Usage: docker compose up
+# ---------------------------------------------------------------------------
 services:
   db:
     image: postgres:16-alpine
@@ -9,11 +13,24 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./deploy/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d automated_software"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   web:
     build: .
@@ -23,11 +40,21 @@ services:
     env_file:
       - .env
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
       - .:/app
       - screenshots:/app/screenshots
+      - html_snapshots:/app/html_snapshots
+      - browser_logs:/app/browser_logs
+      - debug_reports:/app/debug_reports
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   celery_worker:
     build: .
@@ -41,12 +68,22 @@ services:
     env_file:
       - .env
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
       - .:/app
       - screenshots:/app/screenshots
+      - html_snapshots:/app/html_snapshots
       - browser_logs:/app/browser_logs
+      - debug_reports:/app/debug_reports
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A configs.celery_app inspect ping --timeout 5 2>/dev/null | grep -q OK"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   celery_dlq_worker:
     build: .
@@ -58,8 +95,10 @@ services:
     env_file:
       - .env
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     volumes:
       - .:/app
 
@@ -69,8 +108,10 @@ services:
     env_file:
       - .env
     depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
   flower:
     build: .
@@ -80,9 +121,33 @@ services:
     env_file:
       - .env
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5555/api/workers"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  dashboard:
+    build: ./dashboard
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      web:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
 volumes:
   postgres_data:
+  redis_data:
   screenshots:
+  html_snapshots:
   browser_logs:
+  debug_reports:

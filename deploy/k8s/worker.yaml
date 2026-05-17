@@ -1,0 +1,190 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-worker
+  namespace: automated-software
+  labels:
+    app: celery-worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: celery-worker
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app: celery-worker
+    spec:
+      containers:
+        - name: worker
+          image: automated-software-api:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - celery
+            - -A
+            - configs.celery_app
+            - worker
+            - --loglevel=info
+            - --concurrency=5
+            - --queues=registrations,registrations.high,registrations.low
+            - --max-tasks-per-child=50
+            - --max-memory-per-child=512000
+            - --without-heartbeat
+          envFrom:
+            - configMapRef:
+                name: app-config
+            - secretRef:
+                name: app-secrets
+          resources:
+            requests:
+              memory: 512Mi
+              cpu: 500m
+            limits:
+              memory: 1Gi
+              cpu: "2"
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "celery -A configs.celery_app inspect ping --timeout 5 2>/dev/null | grep -q OK"
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          volumeMounts:
+            - name: screenshots
+              mountPath: /app/screenshots
+            - name: debug-data
+              mountPath: /app/html_snapshots
+              subPath: html_snapshots
+            - name: debug-data
+              mountPath: /app/browser_logs
+              subPath: browser_logs
+            - name: debug-data
+              mountPath: /app/debug_reports
+              subPath: debug_reports
+      volumes:
+        - name: screenshots
+          emptyDir: {}
+        - name: debug-data
+          emptyDir: {}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: celery-worker-hpa
+  namespace: automated-software
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: celery-worker
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 75
+---
+# DLQ + monitoring worker — single replica, low resources
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-dlq-worker
+  namespace: automated-software
+  labels:
+    app: celery-dlq-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: celery-dlq-worker
+  template:
+    metadata:
+      labels:
+        app: celery-dlq-worker
+    spec:
+      containers:
+        - name: dlq-worker
+          image: automated-software-api:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - celery
+            - -A
+            - configs.celery_app
+            - worker
+            - --loglevel=info
+            - --concurrency=2
+            - --queues=dead_letter,monitoring
+            - --without-heartbeat
+          envFrom:
+            - configMapRef:
+                name: app-config
+            - secretRef:
+                name: app-secrets
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 100m
+            limits:
+              memory: 256Mi
+              cpu: 500m
+---
+# Celery beat — exactly 1 replica
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-beat
+  namespace: automated-software
+  labels:
+    app: celery-beat
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: celery-beat
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: celery-beat
+    spec:
+      containers:
+        - name: beat
+          image: automated-software-api:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - celery
+            - -A
+            - configs.celery_app
+            - beat
+            - --loglevel=info
+            - --pidfile=/tmp/celerybeat.pid
+          envFrom:
+            - configMapRef:
+                name: app-config
+            - secretRef:
+                name: app-secrets
+          resources:
+            requests:
+              memory: 64Mi
+              cpu: 50m
+            limits:
+              memory: 128Mi
+              cpu: 250m
