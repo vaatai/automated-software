@@ -56,6 +56,19 @@ class Settings(BaseSettings):
     ERROR_MAX_NETWORK_LOGS: int = 200
     ERROR_MAX_DEBUG_REPORTS_DAYS: int = 7
 
+    # --- Security ---
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    JWT_REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    RATE_LIMIT_ENABLED: bool = True
+    RATE_LIMIT_DEFAULT_MAX: int = 60
+    RATE_LIMIT_DEFAULT_WINDOW: int = 60
+    SECURITY_HEADERS_ENABLED: bool = True
+    ENABLE_HSTS: bool = True
+    ENABLE_CSP: bool = True
+    AUDIT_LOG_ENABLED: bool = True
+    CELERY_REDIS_SSL: bool = False
+    CORS_ALLOWED_ORIGINS: str = "*"
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 
