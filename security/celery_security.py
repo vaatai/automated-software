@@ -50,7 +50,7 @@ def apply_celery_security(app: Celery, *, redis_ssl: bool = False) -> None:
         # Limit task body size (prevent DoS via oversized messages)
         "task_compression": None,
         # Disable remote control commands from untrusted sources
-        "worker_enable_remote_control": True,
+        "worker_enable_remote_control": False,
     }
 
     # ── Redis TLS ───────────────────────────────────────────

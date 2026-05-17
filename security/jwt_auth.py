@@ -25,8 +25,8 @@ logger = logging.getLogger(__name__)
 
 # ── token configuration ─────────────────────────────────────
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
-REFRESH_TOKEN_EXPIRE_DAYS = 7
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES
+REFRESH_TOKEN_EXPIRE_DAYS = settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 

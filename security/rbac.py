@@ -102,6 +102,8 @@ ROLE_PERMISSIONS: dict[UserRole, frozenset[Permission]] = {
             Permission.MONITORING_VIEW,
             Permission.LOGS_VIEW,
             Permission.USER_VIEW,
+            Permission.USER_CREATE,
+            Permission.USER_UPDATE,
             Permission.AUDIT_VIEW,
         }
     ),

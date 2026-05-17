@@ -320,6 +320,13 @@ async def update_user(
     if not target:
         raise HTTPException(status_code=404, detail="User not found")
 
+    # Prevent non-super-admins from modifying super_admin accounts
+    if target.role == UserRole.SUPER_ADMIN and admin.role != UserRole.SUPER_ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only super_admin can modify super_admin accounts",
+        )
+
     # Prevent role escalation beyond admin's own role
     if body.role and body.role == UserRole.SUPER_ADMIN and admin.role != UserRole.SUPER_ADMIN:
         raise HTTPException(
