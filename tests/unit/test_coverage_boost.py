@@ -175,25 +175,32 @@ class TestCelerySecurityValidate:
         from security.celery_security import validate_celery_config
 
         mock_app = MagicMock()
-        mock_app.conf.accept_content = ["json"]
-        mock_app.conf.task_serializer = "json"
-        mock_app.conf.result_serializer = "json"
-        mock_app.conf.worker_enable_remote_control = False
+        mock_app.conf.get = MagicMock(side_effect=lambda key, *args: {
+            "accept_content": ["json"],
+            "task_serializer": "json",
+            "result_serializer": "json",
+            "task_remote_tracebacks": False,
+            "broker_url": "redis://localhost:6379/0",
+        }.get(key, args[0] if args else None))
 
         warnings = validate_celery_config(mock_app)
-        assert isinstance(warnings, list)
+        assert warnings == []
 
     def test_validate_celery_config_with_pickle(self):
         from security.celery_security import validate_celery_config
 
         mock_app = MagicMock()
-        mock_app.conf.accept_content = ["json", "pickle"]
-        mock_app.conf.task_serializer = "pickle"
-        mock_app.conf.result_serializer = "json"
-        mock_app.conf.worker_enable_remote_control = True
+        mock_app.conf.get = MagicMock(side_effect=lambda key, *args: {
+            "accept_content": ["json", "pickle"],
+            "task_serializer": "pickle",
+            "result_serializer": "json",
+            "task_remote_tracebacks": True,
+            "broker_url": "redis://localhost:6379/0",
+        }.get(key, args[0] if args else None))
 
         warnings = validate_celery_config(mock_app)
         assert len(warnings) > 0
+        assert any("pickle" in w for w in warnings)
 
 
 # ── HTTPS config ────────────────────────────────────────
