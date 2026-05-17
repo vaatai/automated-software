@@ -1,0 +1,38 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+.venv
+venv
+.mypy_cache
+.pytest_cache
+.ruff_cache
+
+# Node (dashboard has its own Dockerfile)
+dashboard/node_modules
+dashboard/.next
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# Deployment
+deploy/
+docker-compose*.yml
+*.md
+
+# Runtime data
+screenshots/
+html_snapshots/
+debug_reports/
+browser_logs/
+
+# Env files (injected at runtime)
+.env
+.env.local
