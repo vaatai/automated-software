@@ -33,6 +33,35 @@ dev = [
     "ruff>=0.2.0",
     "pytest>=7.4.4",
     "pytest-asyncio>=0.23.3",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.12.0",
+    "httpx>=0.26.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "unit: pure unit tests (no external deps)",
+    "integration: tests requiring DB or Redis",
+    "api: FastAPI endpoint tests",
+    "slow: long-running tests (load, concurrency)",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["api", "security", "services", "otp", "workers", "utils", "playwright_bot", "models"]
+omit = ["tests/*", "alembic/*", "dashboard/*"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 60
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__ ==",
 ]
 
 [tool.ruff]
