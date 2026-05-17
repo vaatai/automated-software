@@ -4,6 +4,7 @@ import enum
 from datetime import datetime
 
 from sqlalchemy import (
+    JSON,
     DateTime,
     Enum,
     ForeignKey,
@@ -37,6 +38,7 @@ class Registration(Base):
         Index("ix_registrations_created_at", "created_at"),
         Index("ix_registrations_celery_task_id", "celery_task_id"),
         Index("ix_registrations_deleted_at", "deleted_at"),
+        Index("ix_registrations_error_category", "error_category"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -64,21 +66,21 @@ class Registration(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     screenshot_path: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Error handling & resilience
+    html_snapshot_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    browser_log_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_category: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    error_context: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
     # Proxy used for this registration
     proxy_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("proxies.id", ondelete="SET NULL"), nullable=True
     )
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
-    started_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Soft delete
     deleted_at: Mapped[datetime | None] = mapped_column(
