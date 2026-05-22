@@ -12,8 +12,8 @@ export function Shell({ children }: { children: ReactNode }) {
   const { theme } = useTheme();
 
   return (
-    <div className={`flex h-screen text-white transition-colors duration-300 ${
-      theme === "dark" ? "bg-gray-950" : "bg-slate-50 text-slate-900"
+    <div className={`flex h-screen transition-colors duration-300 ${
+      theme === "dark" ? "bg-gray-950 text-white" : "bg-slate-50 text-slate-900"
     }`}>
       <AnimatedBackground />
 

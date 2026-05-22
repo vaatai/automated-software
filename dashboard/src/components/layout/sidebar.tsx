@@ -15,7 +15,7 @@ import {
   Play,
   Server,
 } from "lucide-react";
-import Image from "next/image";
+import { AutoRegLogo } from "@/components/ui/logo";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -50,14 +50,7 @@ export function Sidebar() {
         "flex h-16 items-center gap-3 border-b px-5",
         dark ? "border-gray-800/60" : "border-slate-200",
       )}>
-        <Image
-          src="/logo.png"
-          alt="AutoReg"
-          width={40}
-          height={40}
-          className="rounded-lg"
-          preload
-        />
+        <AutoRegLogo size={40} />
         <div>
           <span className={cn("text-lg font-bold tracking-tight", dark ? "text-white" : "text-slate-900")}>
             AutoReg
