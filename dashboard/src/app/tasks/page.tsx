@@ -8,6 +8,7 @@ import { Pagination } from "@/components/ui/pagination";
 import { Spinner } from "@/components/ui/spinner";
 import { StatCard } from "@/components/ui/stat-card";
 import { useFetch } from "@/hooks/use-fetch";
+import { useThemeClasses } from "@/hooks/use-theme-classes";
 import { useWebSocket } from "@/hooks/use-websocket";
 import { monitoring } from "@/lib/api";
 import { formatNumber, timeAgo } from "@/lib/utils";
@@ -17,6 +18,7 @@ import { useEffect, useState } from "react";
 export default function TasksPage() {
   const [offset, setOffset] = useState(0);
   const limit = 30;
+  const tc = useThemeClasses();
 
   const { data: overview, loading, error } = useFetch(
     () => monitoring.overview(),
@@ -46,7 +48,7 @@ export default function TasksPage() {
         <h1 className="text-3xl font-bold tracking-tight">
           <span className="text-gradient">Running Tasks</span>
         </h1>
-        <p className="mt-1 text-sm text-gray-500">Live view of active registration tasks</p>
+        <p className={`mt-1 text-sm ${tc.subtext}`}>Live view of active registration tasks</p>
       </div>
 
       <div className="stagger-children grid gap-4 sm:grid-cols-3">
@@ -64,20 +66,20 @@ export default function TasksPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className="border-b border-gray-800/60">
-                  <th className="px-6 py-3.5 text-xs font-semibold uppercase tracking-wider text-gray-500">ID</th>
-                  <th className="px-6 py-3.5 text-xs font-semibold uppercase tracking-wider text-gray-500">Status</th>
-                  <th className="px-6 py-3.5 text-xs font-semibold uppercase tracking-wider text-gray-500">Error</th>
-                  <th className="px-6 py-3.5 text-xs font-semibold uppercase tracking-wider text-gray-500">Started</th>
+                <tr className={`border-b ${tc.tableBorder}`}>
+                  <th className={`px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>ID</th>
+                  <th className={`px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Status</th>
+                  <th className={`px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Error</th>
+                  <th className={`px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Started</th>
                 </tr>
               </thead>
               <tbody>
                 {activeData.items.map((task) => (
-                  <tr key={task.id} className="border-b border-gray-800/30 transition-colors hover:bg-gray-800/30">
-                    <td className="px-6 py-3.5 font-mono text-xs text-gray-400">#{task.id}</td>
+                  <tr key={task.id} className={tc.tableRow}>
+                    <td className={`px-6 py-3.5 font-mono text-xs ${tc.label}`}>#{task.id}</td>
                     <td className="px-6 py-3.5"><StatusBadge status={task.status} /></td>
-                    <td className="px-6 py-3.5 text-sm text-gray-400 max-w-xs truncate">{task.error_message ?? "—"}</td>
-                    <td className="px-6 py-3.5 text-xs text-gray-500">{task.created_at ? timeAgo(task.created_at) : "—"}</td>
+                    <td className={`px-6 py-3.5 text-sm max-w-xs truncate ${tc.label}`}>{task.error_message ?? "\u2014"}</td>
+                    <td className={`px-6 py-3.5 text-xs ${tc.muted}`}>{task.created_at ? timeAgo(task.created_at) : "\u2014"}</td>
                   </tr>
                 ))}
               </tbody>

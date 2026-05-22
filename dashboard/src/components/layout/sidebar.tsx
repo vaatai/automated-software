@@ -1,5 +1,6 @@
 "use client";
 
+import { useTheme } from "@/contexts/theme-context";
 import { cn } from "@/lib/utils";
 import {
   Activity,
@@ -13,8 +14,8 @@ import {
   Mail,
   Play,
   Server,
-  Zap,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -34,16 +35,33 @@ const NAV_ITEMS = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { theme } = useTheme();
+  const dark = theme === "dark";
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-30 flex w-64 flex-col border-r border-gray-800/60 bg-gray-950/95 backdrop-blur-xl">
+    <aside className={cn(
+      "fixed inset-y-0 left-0 z-30 flex w-64 flex-col border-r backdrop-blur-xl transition-colors duration-300",
+      dark
+        ? "border-gray-800/60 bg-gray-950/95"
+        : "border-slate-200 bg-white/90",
+    )}>
       {/* Logo */}
-      <div className="flex h-16 items-center gap-3 border-b border-gray-800/60 px-6">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-violet-600 shadow-lg shadow-blue-500/20">
-          <Zap className="h-5 w-5 text-white" />
-        </div>
+      <div className={cn(
+        "flex h-16 items-center gap-3 border-b px-5",
+        dark ? "border-gray-800/60" : "border-slate-200",
+      )}>
+        <Image
+          src="/logo.png"
+          alt="AutoReg"
+          width={40}
+          height={40}
+          className="rounded-lg"
+          preload
+        />
         <div>
-          <span className="text-lg font-bold tracking-tight text-white">AutoReg</span>
+          <span className={cn("text-lg font-bold tracking-tight", dark ? "text-white" : "text-slate-900")}>
+            AutoReg
+          </span>
           <div className="h-0.5 w-8 rounded-full bg-gradient-to-r from-blue-500 to-violet-500" />
         </div>
       </div>
@@ -64,8 +82,12 @@ export function Sidebar() {
                   className={cn(
                     "group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200",
                     active
-                      ? "bg-gradient-to-r from-blue-600/15 to-violet-600/10 text-blue-400"
-                      : "text-gray-400 hover:bg-gray-800/60 hover:text-gray-200",
+                      ? dark
+                        ? "bg-gradient-to-r from-blue-600/15 to-violet-600/10 text-blue-400"
+                        : "bg-gradient-to-r from-blue-50 to-violet-50 text-blue-600"
+                      : dark
+                        ? "text-gray-400 hover:bg-gray-800/60 hover:text-gray-200"
+                        : "text-slate-500 hover:bg-slate-100 hover:text-slate-900",
                   )}
                 >
                   {active && (
@@ -73,7 +95,7 @@ export function Sidebar() {
                   )}
                   <Icon className={cn(
                     "h-4 w-4 transition-transform duration-200 group-hover:scale-110",
-                    active && "text-blue-400",
+                    active && (dark ? "text-blue-400" : "text-blue-600"),
                   )} />
                   {label}
                 </Link>
@@ -84,10 +106,13 @@ export function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="border-t border-gray-800/60 px-6 py-4">
+      <div className={cn(
+        "border-t px-6 py-4",
+        dark ? "border-gray-800/60" : "border-slate-200",
+      )}>
         <div className="flex items-center gap-2">
           <div className="h-2 w-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400/50" />
-          <p className="text-xs text-gray-500">AutoReg v1.0 · Production</p>
+          <p className={cn("text-xs", dark ? "text-gray-500" : "text-slate-400")}>AutoReg v1.0 · Production</p>
         </div>
       </div>
     </aside>

@@ -4,6 +4,7 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { Spinner } from "@/components/ui/spinner";
 import { useFetch } from "@/hooks/use-fetch";
+import { useThemeClasses } from "@/hooks/use-theme-classes";
 import { monitoring } from "@/lib/api";
 import { cn, formatNumber } from "@/lib/utils";
 import { Inbox } from "lucide-react";
@@ -22,6 +23,7 @@ export default function QueuesPage() {
     [],
     5000,
   );
+  const tc = useThemeClasses();
 
   if (loading && !data) return <Spinner />;
   if (error) return <ErrorBanner message={error} />;
@@ -35,13 +37,15 @@ export default function QueuesPage() {
         <h1 className="text-3xl font-bold tracking-tight">
           <span className="text-gradient">Queues</span>
         </h1>
-        <p className="mt-1 text-sm text-gray-500">Task queue depths and priorities</p>
+        <p className={`mt-1 text-sm ${tc.subtext}`}>Task queue depths and priorities</p>
       </div>
 
       <Card glow="blue">
         <CardHeader>
-          <CardTitle className="text-base font-semibold text-gray-300">Queue Depths</CardTitle>
-          <span className="rounded-full bg-gray-800/80 px-3 py-1 text-sm font-mono text-gray-400">{formatNumber(total)} total</span>
+          <CardTitle className={`text-base font-semibold ${tc.dark ? "text-gray-300" : "text-slate-700"}`}>Queue Depths</CardTitle>
+          <span className={`rounded-full px-3 py-1 text-sm font-mono ${
+            tc.dark ? "bg-gray-800/80 text-gray-400" : "bg-slate-100 text-slate-500"
+          }`}>{formatNumber(total)} total</span>
         </CardHeader>
 
         <div className="space-y-5">
@@ -53,11 +57,11 @@ export default function QueuesPage() {
                 <div className="mb-2 flex items-center justify-between text-sm">
                   <div className="flex items-center gap-2.5">
                     <Inbox className={cn("h-4 w-4 transition-transform group-hover:scale-110", meta.color)} />
-                    <span className="font-medium text-gray-300">{meta.label}</span>
+                    <span className={`font-medium ${tc.dark ? "text-gray-300" : "text-slate-600"}`}>{meta.label}</span>
                   </div>
-                  <span className="font-mono font-bold text-white">{formatNumber(depth)}</span>
+                  <span className={`font-mono font-bold ${tc.heading}`}>{formatNumber(depth)}</span>
                 </div>
-                <div className="h-2.5 overflow-hidden rounded-full bg-gray-800/60">
+                <div className={`h-2.5 overflow-hidden rounded-full ${tc.dark ? "bg-gray-800/60" : "bg-slate-200"}`}>
                   <div
                     className={cn(
                       "h-full rounded-full bg-gradient-to-r transition-all duration-700",

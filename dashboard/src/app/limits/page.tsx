@@ -5,6 +5,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { Spinner } from "@/components/ui/spinner";
 import { useFetch } from "@/hooks/use-fetch";
+import { useThemeClasses } from "@/hooks/use-theme-classes";
 import { monitoring } from "@/lib/api";
 import { cn, formatPct } from "@/lib/utils";
 import { Clock } from "lucide-react";
@@ -12,6 +13,7 @@ import { useState } from "react";
 
 export default function LimitsPage() {
   const [days, setDays] = useState(7);
+  const tc = useThemeClasses();
   const { data, loading, error } = useFetch(
     () => monitoring.dailyUsage({ days }),
     [days],
@@ -25,12 +27,13 @@ export default function LimitsPage() {
           <h1 className="text-3xl font-bold tracking-tight">
             <span className="text-gradient">Daily Limits</span>
           </h1>
-          <p className="mt-1 text-sm text-gray-500">Per-website daily usage and utilization</p>
+          <p className={`mt-1 text-sm ${tc.subtext}`}>Per-website daily usage and utilization</p>
         </div>
         <select
           value={days}
           onChange={(e) => setDays(Number(e.target.value))}
-          className="rounded-xl border border-gray-700/60 bg-gray-800/80 px-4 py-2 text-sm text-white transition-all focus:border-blue-600/60 focus:outline-none focus:ring-1 focus:ring-blue-600/30"
+          className={tc.inputCls}
+          style={{ width: "auto" }}
         >
           <option value={7}>7 Days</option>
           <option value={14}>14 Days</option>
@@ -48,36 +51,36 @@ export default function LimitsPage() {
       {data && data.items.length > 0 && (
         <Card className="p-0 overflow-hidden">
           <CardHeader className="px-6 pt-6">
-            <CardTitle className="text-base font-semibold text-gray-300">
+            <CardTitle className={`text-base font-semibold ${tc.dark ? "text-gray-300" : "text-slate-700"}`}>
               Daily Usage
-              <span className="ml-2 text-xs font-normal text-gray-500">{data.period_days} Days</span>
+              <span className={`ml-2 text-xs font-normal ${tc.subtext}`}>{data.period_days} Days</span>
             </CardTitle>
           </CardHeader>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className="border-b border-gray-800/60">
-                  <th className="px-6 py-3.5 text-xs font-semibold uppercase tracking-wider text-gray-500">Date</th>
-                  <th className="px-6 py-3.5 text-xs font-semibold uppercase tracking-wider text-gray-500">Website</th>
-                  <th className="px-6 py-3.5 text-xs font-semibold uppercase tracking-wider text-gray-500">Limit</th>
-                  <th className="px-6 py-3.5 text-xs font-semibold uppercase tracking-wider text-gray-500">Used</th>
-                  <th className="px-6 py-3.5 text-xs font-semibold uppercase tracking-wider text-gray-500">Success</th>
-                  <th className="px-6 py-3.5 text-xs font-semibold uppercase tracking-wider text-gray-500">Failed</th>
-                  <th className="px-6 py-3.5 text-xs font-semibold uppercase tracking-wider text-gray-500">Utilization</th>
+                <tr className={`border-b ${tc.tableBorder}`}>
+                  <th className={`px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Date</th>
+                  <th className={`px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Website</th>
+                  <th className={`px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Limit</th>
+                  <th className={`px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Used</th>
+                  <th className={`px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Success</th>
+                  <th className={`px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Failed</th>
+                  <th className={`px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Utilization</th>
                 </tr>
               </thead>
               <tbody>
                 {data.items.map((item, i) => (
-                  <tr key={i} className="border-b border-gray-800/30 transition-colors hover:bg-gray-800/30">
-                    <td className="px-6 py-3.5 font-mono text-xs text-gray-400">{item.date}</td>
-                    <td className="px-6 py-3.5 font-medium text-white">{item.website_name}</td>
-                    <td className="px-6 py-3.5 font-mono text-gray-400">{item.daily_limit}</td>
-                    <td className="px-6 py-3.5 font-mono text-gray-300">{item.registration_count}</td>
+                  <tr key={i} className={tc.tableRow}>
+                    <td className={`px-6 py-3.5 font-mono text-xs ${tc.label}`}>{item.date}</td>
+                    <td className={`px-6 py-3.5 font-medium ${tc.heading}`}>{item.website_name}</td>
+                    <td className={`px-6 py-3.5 font-mono ${tc.label}`}>{item.daily_limit}</td>
+                    <td className={`px-6 py-3.5 font-mono ${tc.dark ? "text-gray-300" : "text-slate-600"}`}>{item.registration_count}</td>
                     <td className="px-6 py-3.5 font-mono text-emerald-400">{item.success_count}</td>
                     <td className="px-6 py-3.5 font-mono text-red-400">{item.failure_count}</td>
                     <td className="px-6 py-3.5">
                       <div className="flex items-center gap-2.5">
-                        <div className="h-2 w-20 overflow-hidden rounded-full bg-gray-800/60">
+                        <div className={`h-2 w-20 overflow-hidden rounded-full ${tc.dark ? "bg-gray-800/60" : "bg-slate-200"}`}>
                           <div
                             className={cn(
                               "h-full rounded-full bg-gradient-to-r transition-all duration-500",
@@ -86,7 +89,7 @@ export default function LimitsPage() {
                             style={{ width: `${Math.min(item.utilization_pct, 100)}%` }}
                           />
                         </div>
-                        <span className="text-xs font-medium text-gray-400">{formatPct(item.utilization_pct)}</span>
+                        <span className={`text-xs font-medium ${tc.label}`}>{formatPct(item.utilization_pct)}</span>
                       </div>
                     </td>
                   </tr>
