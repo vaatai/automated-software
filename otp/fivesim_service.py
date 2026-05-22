@@ -24,6 +24,18 @@ from otp.sms_provider import (
 
 logger = logging.getLogger(__name__)
 
+# ISO 2-letter code -> 5SIM country slug mapping
+ISO_TO_FIVESIM: dict[str, str] = {
+    "US": "usa", "GB": "england", "IN": "india", "RU": "russia",
+    "DE": "germany", "FR": "france", "BR": "brazil", "CA": "canada",
+    "AU": "australia", "JP": "japan", "KR": "korea", "CN": "china",
+    "ID": "indonesia", "PH": "philippines", "NG": "nigeria", "PK": "pakistan",
+    "MX": "mexico", "TR": "turkey", "EG": "egypt", "UA": "ukraine",
+    "PL": "poland", "NL": "netherlands", "SE": "sweden", "IT": "italy",
+    "ES": "spain", "TH": "thailand", "VN": "vietnam", "ZA": "southafrica",
+    "KE": "kenya", "CO": "colombia",
+}
+
 
 class FiveSimService(BaseOTPService, SMSProviderAdapter):
     """Primary SMS OTP provider via 5SIM.
@@ -56,6 +68,7 @@ class FiveSimService(BaseOTPService, SMSProviderAdapter):
         service: str = "any",
         operator: str = "any",
     ) -> RentalResult:
+        country = ISO_TO_FIVESIM.get(country.upper(), country.lower()) if country != "any" else "any"
         async with httpx.AsyncClient() as client:
             try:
                 resp = await client.get(
