@@ -5,6 +5,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { Spinner } from "@/components/ui/spinner";
 import { useFetch } from "@/hooks/use-fetch";
+import { useThemeClasses } from "@/hooks/use-theme-classes";
 import { registrations, websites } from "@/lib/api";
 import { Play, Rocket } from "lucide-react";
 import { useState } from "react";
@@ -17,6 +18,7 @@ export default function RegistrationsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const tc = useThemeClasses();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,20 +36,18 @@ export default function RegistrationsPage() {
     }
   };
 
-  const inputClasses = "w-full rounded-xl border border-gray-700/60 bg-gray-800/80 px-4 py-2.5 text-sm text-white transition-all focus:border-blue-600/60 focus:outline-none focus:ring-1 focus:ring-blue-600/30";
-
   return (
     <div className="space-y-8 animate-fade-in">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">
           <span className="text-gradient">Registrations</span>
         </h1>
-        <p className="mt-1 text-sm text-gray-500">Queue new registration tasks</p>
+        <p className={`mt-1 text-sm ${tc.subtext}`}>Queue new registration tasks</p>
       </div>
 
       <Card glow="blue" className="max-w-lg">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-base font-semibold text-gray-300">
+          <CardTitle className={`flex items-center gap-2 text-base font-semibold ${tc.dark ? "text-gray-300" : "text-slate-700"}`}>
             <div className="rounded-lg bg-blue-500/10 p-2">
               <Rocket className="h-4 w-4 text-blue-400" />
             </div>
@@ -57,12 +57,12 @@ export default function RegistrationsPage() {
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-gray-400">Website</label>
+            <label className={`mb-1.5 block text-sm font-medium ${tc.label}`}>Website</label>
             <select
               required
               value={selectedWebsite ?? ""}
               onChange={(e) => setSelectedWebsite(Number(e.target.value))}
-              className={inputClasses}
+              className={tc.inputCls}
             >
               <option value="" disabled>Select a website</option>
               {siteList?.items.map((w) => (
@@ -73,19 +73,19 @@ export default function RegistrationsPage() {
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-400">Count</label>
+              <label className={`mb-1.5 block text-sm font-medium ${tc.label}`}>Count</label>
               <input
                 type="number"
                 min={1}
                 max={1000}
                 value={count}
                 onChange={(e) => setCount(Number(e.target.value))}
-                className={inputClasses}
+                className={tc.inputCls}
               />
             </div>
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-gray-400">Priority</label>
-              <select value={priority} onChange={(e) => setPriority(e.target.value)} className={inputClasses}>
+              <label className={`mb-1.5 block text-sm font-medium ${tc.label}`}>Priority</label>
+              <select value={priority} onChange={(e) => setPriority(e.target.value)} className={tc.inputCls}>
                 <option value="high">High</option>
                 <option value="normal">Normal</option>
                 <option value="low">Low</option>

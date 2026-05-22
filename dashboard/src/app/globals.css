@@ -7,17 +7,30 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* ── Dark mode (default) ─────────────────────────────── */
+html.dark body {
+  background: #030712;
+  color: #f9fafb;
+}
+
+/* ── Light mode ──────────────────────────────────────── */
+html.light body {
+  background: #f8fafc;
+  color: #0f172a;
+}
+
 body {
-  background: var(--color-background);
-  color: var(--color-foreground);
   font-family: var(--font-sans), system-ui, sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 /* ── Scrollbar ───────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+html.dark ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+html.dark ::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+html.light ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+html.light ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
 /* ── Keyframes ───────────────────────────────────────── */
 @keyframes fade-in-up {
@@ -61,6 +74,23 @@ body {
   to { transform: rotate(360deg); }
 }
 
+/* Background floating orb animations */
+@keyframes bg-float-1 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33%      { transform: translate(30px, -30px) scale(1.05); }
+  66%      { transform: translate(-20px, 20px) scale(0.95); }
+}
+@keyframes bg-float-2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33%      { transform: translate(-40px, 20px) scale(1.08); }
+  66%      { transform: translate(25px, -15px) scale(0.92); }
+}
+@keyframes bg-float-3 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33%      { transform: translate(20px, 30px) scale(0.95); }
+  66%      { transform: translate(-30px, -20px) scale(1.05); }
+}
+
 /* ── Animation utilities ─────────────────────────────── */
 .animate-fade-in-up {
   animation: fade-in-up 0.5s ease-out both;
@@ -87,6 +117,15 @@ body {
 .animate-spin-slow {
   animation: spin-slow 3s linear infinite;
 }
+.animate-bg-float-1 {
+  animation: bg-float-1 20s ease-in-out infinite;
+}
+.animate-bg-float-2 {
+  animation: bg-float-2 25s ease-in-out infinite;
+}
+.animate-bg-float-3 {
+  animation: bg-float-3 22s ease-in-out infinite;
+}
 
 /* Stagger children */
 .stagger-children > * { opacity: 0; animation: fade-in-up 0.5s ease-out both; }
@@ -107,10 +146,19 @@ body {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
+html.light .glass {
+  background: rgba(255, 255, 255, 0.7);
+}
 
 /* ── Gradient text ───────────────────────────────────── */
 .text-gradient {
   background: linear-gradient(135deg, #60a5fa, #a78bfa, #f472b6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+html.light .text-gradient {
+  background: linear-gradient(135deg, #2563eb, #7c3aed, #db2777);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -127,10 +175,28 @@ body {
 .glow-emerald { box-shadow: 0 0 20px rgba(52, 211, 153, 0.15); }
 .glow-purple { box-shadow: 0 0 20px rgba(167, 139, 250, 0.15); }
 .glow-red    { box-shadow: 0 0 20px rgba(248, 113, 113, 0.15); }
+html.light .glow-blue   { box-shadow: 0 0 24px rgba(59, 130, 246, 0.12); }
+html.light .glow-emerald { box-shadow: 0 0 24px rgba(52, 211, 153, 0.12); }
+html.light .glow-purple { box-shadow: 0 0 24px rgba(167, 139, 250, 0.12); }
+html.light .glow-red    { box-shadow: 0 0 24px rgba(248, 113, 113, 0.12); }
 
 /* ── Shimmer loading ─────────────────────────────────── */
 .shimmer {
   background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.05) 50%, transparent 100%);
   background-size: 200% 100%;
   animation: shimmer 2s ease-in-out infinite;
+}
+html.light .shimmer {
+  background: linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.04) 50%, transparent 100%);
+  background-size: 200% 100%;
+}
+
+/* ── Theme toggle animation ──────────────────────────── */
+@keyframes theme-switch {
+  0%   { transform: scale(1) rotate(0deg); }
+  50%  { transform: scale(0.8) rotate(180deg); }
+  100% { transform: scale(1) rotate(360deg); }
+}
+.animate-theme-switch {
+  animation: theme-switch 0.5s ease-in-out;
 }
