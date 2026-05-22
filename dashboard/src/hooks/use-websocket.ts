@@ -2,7 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000/ws/monitoring";
+function getWsUrl(): string {
+  if (process.env.NEXT_PUBLIC_WS_URL) return process.env.NEXT_PUBLIC_WS_URL;
+  if (typeof window === "undefined") return "ws://localhost:8000/ws/monitoring";
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${proto}//${window.location.host}/ws/monitoring`;
+}
+const WS_URL = getWsUrl();
 
 export function useWebSocket<T = unknown>() {
   const [lastMessage, setLastMessage] = useState<T | null>(null);
