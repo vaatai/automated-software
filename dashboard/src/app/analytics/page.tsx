@@ -21,6 +21,14 @@ import {
   YAxis,
 } from "recharts";
 
+const tooltipStyle = {
+  background: "rgba(17,24,39,0.95)",
+  border: "1px solid rgba(55,65,81,0.5)",
+  borderRadius: 12,
+  backdropFilter: "blur(8px)",
+  boxShadow: "0 8px 32px rgba(0,0,0,0.3)",
+};
+
 export default function AnalyticsPage() {
   const [days, setDays] = useState(30);
 
@@ -41,13 +49,18 @@ export default function AnalyticsPage() {
   if (error) return <ErrorBanner message={error} />;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 animate-fade-in">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Analytics</h1>
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">
+            <span className="text-gradient">Analytics</span>
+          </h1>
+          <p className="mt-1 text-sm text-gray-500">Registration performance metrics and trends</p>
+        </div>
         <select
           value={days}
           onChange={(e) => setDays(Number(e.target.value))}
-          className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-white focus:border-blue-600 focus:outline-none"
+          className="rounded-xl border border-gray-700/60 bg-gray-800/80 px-4 py-2 text-sm text-white transition-all focus:border-blue-600/60 focus:outline-none focus:ring-1 focus:ring-blue-600/30"
         >
           <option value={7}>7 Days</option>
           <option value={14}>14 Days</option>
@@ -58,46 +71,53 @@ export default function AnalyticsPage() {
 
       {metrics && (
         <>
-          <div className="grid gap-4 sm:grid-cols-3">
+          <div className="stagger-children grid gap-4 sm:grid-cols-3">
             <StatCard
               label="Overall Success Rate"
               value={formatPct(metrics.overall_success_rate_pct)}
               icon={TrendingUp}
+              accent="emerald"
               trend={{ value: `${formatNumber(metrics.total_success)} total`, positive: true }}
             />
             <StatCard
               label="Total Successes"
               value={formatNumber(metrics.total_success)}
               icon={CheckCircle}
+              accent="emerald"
             />
             <StatCard
               label="Total Failures"
               value={formatNumber(metrics.total_failure)}
               icon={XCircle}
+              accent="red"
             />
           </div>
 
-          {/* Daily area chart */}
-          <Card>
+          <Card glow="emerald" className="animate-fade-in-up">
             <CardHeader>
-              <CardTitle>Daily Success Rate</CardTitle>
+              <CardTitle className="text-base font-semibold text-gray-300">
+                Daily Success Rate
+              </CardTitle>
             </CardHeader>
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={metrics.daily}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-                  <XAxis dataKey="date" tick={{ fill: "#9ca3af", fontSize: 11 }} />
-                  <YAxis tick={{ fill: "#9ca3af", fontSize: 11 }} unit="%" />
-                  <Tooltip
-                    contentStyle={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 8 }}
-                    labelStyle={{ color: "#9ca3af" }}
-                  />
+                  <defs>
+                    <linearGradient id="areaGreen" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#34d399" stopOpacity={0.3} />
+                      <stop offset="100%" stopColor="#34d399" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" strokeOpacity={0.5} />
+                  <XAxis dataKey="date" tick={{ fill: "#6b7280", fontSize: 11 }} axisLine={{ stroke: "#1f2937" }} />
+                  <YAxis tick={{ fill: "#6b7280", fontSize: 11 }} unit="%" axisLine={{ stroke: "#1f2937" }} />
+                  <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: "#9ca3af", fontWeight: 600 }} />
                   <Area
                     type="monotone"
                     dataKey="success_rate_pct"
                     stroke="#34d399"
-                    fill="#34d399"
-                    fillOpacity={0.1}
+                    strokeWidth={2}
+                    fill="url(#areaGreen)"
                   />
                 </AreaChart>
               </ResponsiveContainer>
@@ -106,56 +126,46 @@ export default function AnalyticsPage() {
         </>
       )}
 
-      {/* Hourly chart */}
       {hourly && hourly.length > 0 && (
-        <Card>
+        <Card className="animate-fade-in-up">
           <CardHeader>
-            <CardTitle>Hourly Registrations (Last 48h)</CardTitle>
+            <CardTitle className="text-base font-semibold text-gray-300">
+              Hourly Registrations
+              <span className="ml-2 text-xs font-normal text-gray-500">Last 48h</span>
+            </CardTitle>
           </CardHeader>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={hourly}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-                <XAxis
-                  dataKey="hour"
-                  tick={{ fill: "#9ca3af", fontSize: 11 }}
-                  tickFormatter={(h: number) => `${h}:00`}
-                />
-                <YAxis tick={{ fill: "#9ca3af", fontSize: 11 }} />
-                <Tooltip
-                  contentStyle={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 8 }}
-                  labelStyle={{ color: "#9ca3af" }}
-                />
-                <Bar dataKey="success" fill="#34d399" stackId="a" />
-                <Bar dataKey="failure" fill="#f87171" stackId="a" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" strokeOpacity={0.5} />
+                <XAxis dataKey="hour" tick={{ fill: "#6b7280", fontSize: 11 }} tickFormatter={(h: number) => `${h}:00`} axisLine={{ stroke: "#1f2937" }} />
+                <YAxis tick={{ fill: "#6b7280", fontSize: 11 }} axisLine={{ stroke: "#1f2937" }} />
+                <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: "#9ca3af" }} />
+                <Bar dataKey="success" fill="#34d399" stackId="a" radius={[4, 4, 0, 0]} opacity={0.85} />
+                <Bar dataKey="failure" fill="#f87171" stackId="a" radius={[4, 4, 0, 0]} opacity={0.85} />
               </BarChart>
             </ResponsiveContainer>
           </div>
         </Card>
       )}
 
-      {/* Weekly chart */}
       {weekly && weekly.length > 0 && (
-        <Card>
+        <Card className="animate-fade-in-up">
           <CardHeader>
-            <CardTitle>Weekly Registrations (12 Weeks)</CardTitle>
+            <CardTitle className="text-base font-semibold text-gray-300">
+              Weekly Registrations
+              <span className="ml-2 text-xs font-normal text-gray-500">12 Weeks</span>
+            </CardTitle>
           </CardHeader>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={weekly}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-                <XAxis
-                  dataKey="week"
-                  tick={{ fill: "#9ca3af", fontSize: 11 }}
-                  tickFormatter={(w: number) => `W${w}`}
-                />
-                <YAxis tick={{ fill: "#9ca3af", fontSize: 11 }} />
-                <Tooltip
-                  contentStyle={{ background: "#111827", border: "1px solid #1f2937", borderRadius: 8 }}
-                  labelStyle={{ color: "#9ca3af" }}
-                />
-                <Bar dataKey="success" fill="#34d399" stackId="a" />
-                <Bar dataKey="failure" fill="#f87171" stackId="a" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" strokeOpacity={0.5} />
+                <XAxis dataKey="week" tick={{ fill: "#6b7280", fontSize: 11 }} tickFormatter={(w: number) => `W${w}`} axisLine={{ stroke: "#1f2937" }} />
+                <YAxis tick={{ fill: "#6b7280", fontSize: 11 }} axisLine={{ stroke: "#1f2937" }} />
+                <Tooltip contentStyle={tooltipStyle} labelStyle={{ color: "#9ca3af" }} />
+                <Bar dataKey="success" fill="#34d399" stackId="a" radius={[4, 4, 0, 0]} opacity={0.85} />
+                <Bar dataKey="failure" fill="#f87171" stackId="a" radius={[4, 4, 0, 0]} opacity={0.85} />
               </BarChart>
             </ResponsiveContainer>
           </div>
