@@ -91,7 +91,7 @@ export const websites = {
 
 // ── Registrations ─────────────────────────────────────────
 export const registrations = {
-  create: (data: { website_id: number; count?: number; priority?: string }) =>
+  create: (data: { website_id: number; count?: number; priority?: string; custom_data?: Record<string, unknown> }) =>
     request<unknown>("/api/registrations/", { method: "POST", body: JSON.stringify(data) }),
 };
 
@@ -190,16 +190,24 @@ export interface RankingItem {
 }
 
 export interface Website {
-  id: number; name: string; domain: string; status: string;
+  id: number; name: string; url: string; domain?: string; status: string;
   registration_url?: string; max_registrations_per_day: number;
   form_config?: Record<string, unknown>;
+  requires_email_otp?: boolean; requires_mobile_otp?: boolean;
+  phone_country?: string;
   created_at?: string; updated_at?: string;
 }
 export interface PaginatedWebsites { total: number; items: Website[] }
 export interface WebsiteCreatePayload {
-  name: string; domain: string; registration_url: string;
+  name: string;
+  url: string;
+  form_config: {
+    registration_url: string;
+    steps: { step_name?: string; fields: Record<string, { selector: string; field_type?: string }>; submit_button?: { selector: string } }[];
+  };
+  requires_email_otp?: boolean;
+  requires_mobile_otp?: boolean;
   max_registrations_per_day?: number;
-  form_config?: Record<string, unknown>;
 }
 
 export interface TaskDetail {

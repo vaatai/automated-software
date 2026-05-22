@@ -46,7 +46,7 @@ export function StatCard({
   return (
     <div
       className={cn(
-        "group relative overflow-hidden rounded-xl border p-5 shadow-lg transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl",
+        "group relative overflow-hidden rounded-xl border p-3 sm:p-5 shadow-lg transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl",
         dark
           ? "border-gray-800/80 bg-gradient-to-br from-gray-900 to-gray-900/80 hover:border-gray-700/80"
           : "border-slate-200 bg-white/80 hover:border-slate-300",
@@ -58,15 +58,15 @@ export function StatCard({
         !dark && "from-blue-50/30 to-transparent",
       )} />
 
-      <div className="relative flex items-start gap-4">
+      <div className="relative flex items-start gap-3 sm:gap-4">
         {Icon && (
-          <div className={cn("rounded-xl bg-gradient-to-br p-3 transition-transform duration-300 group-hover:scale-110", iconClasses)}>
-            <Icon className="h-5 w-5" />
+          <div className={cn("rounded-xl bg-gradient-to-br p-2 sm:p-3 transition-transform duration-300 group-hover:scale-110", iconClasses)}>
+            <Icon className="h-4 w-4 sm:h-5 sm:w-5" />
           </div>
         )}
         <div className="min-w-0 flex-1">
-          <p className={cn("text-sm", dark ? "text-gray-400" : "text-slate-500")}>{label}</p>
-          <p className={cn("animate-count-up mt-1 text-2xl font-bold tracking-tight", dark ? "text-white" : "text-slate-900")}>
+          <p className={cn("text-xs sm:text-sm", dark ? "text-gray-400" : "text-slate-500")}>{label}</p>
+          <p className={cn("animate-count-up mt-0.5 sm:mt-1 text-xl sm:text-2xl font-bold tracking-tight", dark ? "text-white" : "text-slate-900")}>
             {value}
           </p>
           {trend && (

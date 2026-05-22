@@ -49,17 +49,17 @@ export default function DashboardPage() {
   if (!overview) return null;
 
   return (
-    <div className="space-y-8 animate-fade-in">
+    <div className="space-y-6 sm:space-y-8 animate-fade-in">
       {/* Page header */}
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
           <span className="text-gradient">Dashboard</span>
         </h1>
         <p className={`mt-1 text-sm ${tc.subtext}`}>Real-time registration monitoring overview</p>
       </div>
 
       {/* Primary stats */}
-      <div className="stagger-children grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="stagger-children grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Total Registrations"
           value={formatNumber(overview.total_registrations)}
@@ -112,7 +112,7 @@ export default function DashboardPage() {
               <span className={`ml-2 text-xs font-normal ${tc.subtext}`}>Last 14 Days</span>
             </CardTitle>
           </CardHeader>
-          <div className="h-72">
+          <div className="h-52 sm:h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={metrics.daily} barCategoryGap="20%">
                 <defs>

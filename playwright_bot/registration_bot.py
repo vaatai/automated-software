@@ -123,11 +123,12 @@ class RegistrationBot:
 
                     # 2) provision phone number (5SIM → PVAPins fallback)
                     if requires_mobile_otp:
+                        phone_country = (custom_data or {}).get("phone_country", "US")
                         try:
-                            num = await self.fivesim.rent_number()
+                            num = await self.fivesim.rent_number(country=phone_country)
                             sms_provider = "5sim"
                         except Exception:
-                            num = await self.pvapins.rent_number()
+                            num = await self.pvapins.rent_number(country=phone_country)
                             sms_provider = "pvapins"
                         sms_order_id = num.order_id
                         reg_data["phone"] = num.phone_number

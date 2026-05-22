@@ -55,13 +55,13 @@ export default function OtpPage() {
   return (
     <div className="space-y-8 animate-fade-in">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
           <span className="text-gradient">OTP Tracking</span>
         </h1>
         <p className={`mt-1 text-sm ${tc.subtext}`}>Email and mobile verification status</p>
       </div>
 
-      <div className="stagger-children grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="stagger-children grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
         <StatCard label="Email Verified" value={formatNumber(data.email_otp_verified)} icon={Mail} accent="emerald"
           trend={{ value: formatPct(data.email_verification_rate_pct), positive: data.email_verification_rate_pct > 50 }} />
         <StatCard label="Email Pending" value={formatNumber(data.email_otp_pending)} icon={Clock} accent="amber" />
