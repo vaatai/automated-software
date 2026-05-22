@@ -5,7 +5,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
 import { Spinner } from "@/components/ui/spinner";
 import { useFetch } from "@/hooks/use-fetch";
-import { monitoring, websites } from "@/lib/api";
+import { registrations, websites } from "@/lib/api";
 import { Play, Rocket } from "lucide-react";
 import { useState } from "react";
 
@@ -25,14 +25,8 @@ export default function RegistrationsPage() {
     setErr(null);
     setResult(null);
     try {
-      const resp = await fetch("/api/registrations/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ website_id: selectedWebsite, count, priority }),
-      });
-      if (!resp.ok) throw new Error(await resp.text());
-      const data = await resp.json();
-      setResult(`Queued ${data.tasks_queued ?? count} registration(s)`);
+      await registrations.create({ website_id: selectedWebsite, count, priority });
+      setResult(`Queued ${count} registration(s)`);
     } catch (error) {
       setErr(error instanceof Error ? error.message : "Failed");
     } finally {
