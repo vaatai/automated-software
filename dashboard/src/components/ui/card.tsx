@@ -4,14 +4,23 @@ import type { ReactNode } from "react";
 export function Card({
   children,
   className,
+  glow,
+  onClick,
 }: {
   children: ReactNode;
   className?: string;
+  glow?: "blue" | "emerald" | "purple" | "red";
+  onClick?: () => void;
 }) {
   return (
     <div
+      onClick={onClick}
       className={cn(
-        "rounded-xl border border-gray-800 bg-gray-900 p-6 shadow-sm",
+        "relative rounded-xl border border-gray-800/80 bg-gradient-to-br from-gray-900 to-gray-900/80 p-6 shadow-lg transition-all duration-300 hover:border-gray-700/80 hover:shadow-xl",
+        glow === "blue" && "glow-blue",
+        glow === "emerald" && "glow-emerald",
+        glow === "purple" && "glow-purple",
+        glow === "red" && "glow-red",
         className,
       )}
     >
