@@ -41,7 +41,7 @@ export function Header({
 
         <div className="flex-1" />
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           {/* Theme toggle */}
           <button
             onClick={toggle}
@@ -85,13 +85,13 @@ export function Header({
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
                 </span>
-                <span className="text-xs font-medium text-emerald-400">Live</span>
+                <span className="hidden sm:inline text-xs font-medium text-emerald-400">Live</span>
                 <Wifi className="h-3.5 w-3.5 text-emerald-400" />
               </>
             ) : (
               <>
                 <span className={cn("h-2 w-2 rounded-full", dark ? "bg-gray-600" : "bg-slate-300")} />
-                <span className={cn("text-xs font-medium", dark ? "text-gray-500" : "text-slate-400")}>Offline</span>
+                <span className={cn("hidden sm:inline text-xs font-medium", dark ? "text-gray-500" : "text-slate-400")}>Offline</span>
                 <WifiOff className={cn("h-3.5 w-3.5", dark ? "text-gray-500" : "text-slate-400")} />
               </>
             )}

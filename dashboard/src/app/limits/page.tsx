@@ -22,7 +22,7 @@ export default function LimitsPage() {
 
   return (
     <div className="space-y-8 animate-fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
             <span className="text-gradient">Daily Limits</span>
@@ -50,7 +50,7 @@ export default function LimitsPage() {
 
       {data && data.items.length > 0 && (
         <Card className="p-0 overflow-hidden">
-          <CardHeader className="px-6 pt-6">
+          <CardHeader className="px-3 sm:px-6 pt-6">
             <CardTitle className={`text-base font-semibold ${tc.dark ? "text-gray-300" : "text-slate-700"}`}>
               Daily Usage
               <span className={`ml-2 text-xs font-normal ${tc.subtext}`}>{data.period_days} Days</span>
@@ -60,25 +60,25 @@ export default function LimitsPage() {
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className={`border-b ${tc.tableBorder}`}>
-                  <th className={`px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Date</th>
-                  <th className={`px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Website</th>
-                  <th className={`px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Limit</th>
-                  <th className={`px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Used</th>
-                  <th className={`px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Success</th>
-                  <th className={`px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Failed</th>
-                  <th className={`px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Utilization</th>
+                  <th className={`px-3 sm:px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Date</th>
+                  <th className={`px-3 sm:px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Website</th>
+                  <th className={`hidden sm:table-cell px-3 sm:px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Limit</th>
+                  <th className={`px-3 sm:px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Used</th>
+                  <th className={`hidden md:table-cell px-3 sm:px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Success</th>
+                  <th className={`hidden md:table-cell px-3 sm:px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Failed</th>
+                  <th className={`px-3 sm:px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Utilization</th>
                 </tr>
               </thead>
               <tbody>
                 {data.items.map((item, i) => (
                   <tr key={i} className={tc.tableRow}>
-                    <td className={`px-6 py-3.5 font-mono text-xs ${tc.label}`}>{item.date}</td>
-                    <td className={`px-6 py-3.5 font-medium ${tc.heading}`}>{item.website_name}</td>
-                    <td className={`px-6 py-3.5 font-mono ${tc.label}`}>{item.daily_limit}</td>
-                    <td className={`px-6 py-3.5 font-mono ${tc.dark ? "text-gray-300" : "text-slate-600"}`}>{item.registration_count}</td>
-                    <td className="px-6 py-3.5 font-mono text-emerald-400">{item.success_count}</td>
-                    <td className="px-6 py-3.5 font-mono text-red-400">{item.failure_count}</td>
-                    <td className="px-6 py-3.5">
+                    <td className={`px-3 sm:px-6 py-3.5 font-mono text-xs ${tc.label}`}>{item.date}</td>
+                    <td className={`px-3 sm:px-6 py-3.5 font-medium truncate max-w-[120px] sm:max-w-none ${tc.heading}`}>{item.website_name}</td>
+                    <td className={`hidden sm:table-cell px-3 sm:px-6 py-3.5 font-mono ${tc.label}`}>{item.daily_limit}</td>
+                    <td className={`px-3 sm:px-6 py-3.5 font-mono ${tc.dark ? "text-gray-300" : "text-slate-600"}`}>{item.registration_count}</td>
+                    <td className="hidden md:table-cell px-3 sm:px-6 py-3.5 font-mono text-emerald-400">{item.success_count}</td>
+                    <td className="hidden md:table-cell px-3 sm:px-6 py-3.5 font-mono text-red-400">{item.failure_count}</td>
+                    <td className="px-3 sm:px-6 py-3.5">
                       <div className="flex items-center gap-2.5">
                         <div className={`h-2 w-20 overflow-hidden rounded-full ${tc.dark ? "bg-gray-800/60" : "bg-slate-200"}`}>
                           <div

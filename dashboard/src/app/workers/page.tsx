@@ -52,7 +52,7 @@ export default function WorkersPage() {
               </span>
             </CardHeader>
 
-            <div className="grid gap-4 text-sm sm:grid-cols-3 lg:grid-cols-5">
+            <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3 lg:grid-cols-5">
               {[
                 { label: "Active Tasks", value: worker.active_tasks },
                 { label: "Reserved Tasks", value: worker.reserved_tasks },
@@ -72,7 +72,7 @@ export default function WorkersPage() {
                 <p className={`mb-2 text-xs font-semibold uppercase tracking-wider ${tc.muted}`}>Active Task Details</p>
                 <div className="space-y-2">
                   {worker.active_task_details.map((t) => (
-                    <div key={t.id} className={`flex items-center justify-between rounded-lg px-4 py-2.5 text-xs transition-colors ${
+                    <div key={t.id} className={`flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 rounded-lg px-3 sm:px-4 py-2.5 text-xs transition-colors ${
                       tc.dark ? "bg-gray-800/30 hover:bg-gray-800/50" : "bg-slate-50 hover:bg-slate-100"
                     }`}>
                       <span className={`font-mono ${tc.label}`}>{t.id?.slice(0, 12)}</span>

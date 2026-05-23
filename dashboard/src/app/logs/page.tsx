@@ -76,7 +76,7 @@ export default function LogsPage() {
         <Card className="p-0 overflow-hidden">
           <div className={`divide-y ${tc.dark ? "divide-gray-800/30" : "divide-slate-100"}`}>
             {data.items.map((log, i) => (
-              <div key={i} className={`group px-6 py-4 transition-colors ${
+              <div key={i} className={`group px-3 sm:px-6 py-3 sm:py-4 transition-colors ${
                 tc.dark ? "hover:bg-gray-800/20" : "hover:bg-slate-50"
               }`}>
                 <div className="flex items-center gap-3 mb-1.5">
@@ -95,7 +95,7 @@ export default function LogsPage() {
               </div>
             ))}
           </div>
-          <div className="px-6 pb-4">
+          <div className="px-3 sm:px-6 pb-4">
             <Pagination total={data.total} limit={limit} offset={offset} onChange={setOffset} />
           </div>
         </Card>

@@ -123,22 +123,22 @@ export default function OtpPage() {
           <CardTitle className={`text-base font-semibold ${tc.dark ? "text-gray-300" : "text-slate-700"}`}>Verification Summary</CardTitle>
         </CardHeader>
         <div className="grid gap-6 sm:grid-cols-2">
-          <div className={`flex items-center gap-4 rounded-xl p-4 ${tc.dark ? "bg-gray-800/30" : "bg-slate-50"}`}>
-            <div className="rounded-xl bg-emerald-500/10 p-3">
-              <CheckCircle className="h-6 w-6 text-emerald-400" />
+          <div className={`flex items-center gap-3 sm:gap-4 rounded-xl p-3 sm:p-4 ${tc.dark ? "bg-gray-800/30" : "bg-slate-50"}`}>
+            <div className="rounded-xl bg-emerald-500/10 p-2.5 sm:p-3">
+              <CheckCircle className="h-5 w-5 sm:h-6 sm:w-6 text-emerald-400" />
             </div>
             <div>
-              <p className={`text-sm ${tc.label}`}>Email Verification Rate</p>
-              <p className={`text-2xl font-bold ${tc.heading}`}>{formatPct(data.email_verification_rate_pct)}</p>
+              <p className={`text-xs sm:text-sm ${tc.label}`}>Email Verification Rate</p>
+              <p className={`text-xl sm:text-2xl font-bold ${tc.heading}`}>{formatPct(data.email_verification_rate_pct)}</p>
             </div>
           </div>
-          <div className={`flex items-center gap-4 rounded-xl p-4 ${tc.dark ? "bg-gray-800/30" : "bg-slate-50"}`}>
-            <div className="rounded-xl bg-purple-500/10 p-3">
-              <CheckCircle className="h-6 w-6 text-purple-400" />
+          <div className={`flex items-center gap-3 sm:gap-4 rounded-xl p-3 sm:p-4 ${tc.dark ? "bg-gray-800/30" : "bg-slate-50"}`}>
+            <div className="rounded-xl bg-purple-500/10 p-2.5 sm:p-3">
+              <CheckCircle className="h-5 w-5 sm:h-6 sm:w-6 text-purple-400" />
             </div>
             <div>
-              <p className={`text-sm ${tc.label}`}>Mobile Verification Rate</p>
-              <p className={`text-2xl font-bold ${tc.heading}`}>{formatPct(data.mobile_verification_rate_pct)}</p>
+              <p className={`text-xs sm:text-sm ${tc.label}`}>Mobile Verification Rate</p>
+              <p className={`text-xl sm:text-2xl font-bold ${tc.heading}`}>{formatPct(data.mobile_verification_rate_pct)}</p>
             </div>
           </div>
         </div>
