@@ -11,6 +11,11 @@ interface ThemeContextValue {
 
 const ThemeContext = createContext<ThemeContextValue>({ theme: "dark", toggle: () => {} });
 
+function applyTheme(t: Theme) {
+  document.documentElement.classList.toggle("dark", t === "dark");
+  document.documentElement.classList.toggle("light", t === "light");
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>("dark");
 
@@ -18,17 +23,37 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const saved = localStorage.getItem("autoreg-theme") as Theme | null;
     if (saved === "light" || saved === "dark") {
       setTheme(saved);
-      document.documentElement.classList.toggle("dark", saved === "dark");
-      document.documentElement.classList.toggle("light", saved === "light");
+      applyTheme(saved);
+    } else {
+      // Auto-detect device preference on first visit
+      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      const detected: Theme = prefersDark ? "dark" : "light";
+      setTheme(detected);
+      applyTheme(detected);
     }
+  }, []);
+
+  // Listen for device theme changes in real-time
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const handler = (e: MediaQueryListEvent) => {
+      const saved = localStorage.getItem("autoreg-theme");
+      // Only auto-switch if user hasn't manually toggled
+      if (!saved) {
+        const next: Theme = e.matches ? "dark" : "light";
+        setTheme(next);
+        applyTheme(next);
+      }
+    };
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
   }, []);
 
   const toggle = useCallback(() => {
     setTheme((prev) => {
       const next = prev === "dark" ? "light" : "dark";
       localStorage.setItem("autoreg-theme", next);
-      document.documentElement.classList.toggle("dark", next === "dark");
-      document.documentElement.classList.toggle("light", next === "light");
+      applyTheme(next);
       return next;
     });
   }, []);
