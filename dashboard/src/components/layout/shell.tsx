@@ -2,7 +2,7 @@
 
 import { useTheme } from "@/contexts/theme-context";
 import type { ReactNode } from "react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { AnimatedBackground } from "./animated-bg";
 import { Header } from "./header";
 import { Sidebar } from "./sidebar";
@@ -19,13 +19,15 @@ export function Shell({ children }: { children: ReactNode }) {
     if (saved === "true") setCollapsed(true);
   }, []);
 
-  const toggleCollapsed = () => {
+  const toggleCollapsed = useCallback(() => {
     setCollapsed((prev) => {
       const next = !prev;
       localStorage.setItem(SIDEBAR_KEY, String(next));
       return next;
     });
-  };
+  }, []);
+
+  const closeMobile = useCallback(() => setMobileOpen(false), []);
 
   return (
     <div className={`flex h-screen transition-colors duration-300 ${
@@ -37,7 +39,7 @@ export function Shell({ children }: { children: ReactNode }) {
       {mobileOpen && (
         <div
           className="fixed inset-0 z-20 bg-black/60 lg:hidden"
-          onClick={() => setMobileOpen(false)}
+          onClick={closeMobile}
         />
       )}
 
@@ -45,7 +47,12 @@ export function Shell({ children }: { children: ReactNode }) {
       <div
         className={`${mobileOpen ? "translate-x-0" : "-translate-x-full"} fixed inset-y-0 left-0 z-30 transition-all duration-300 lg:translate-x-0`}
       >
-        <Sidebar collapsed={mobileOpen ? false : collapsed} onToggleCollapse={toggleCollapsed} />
+        <Sidebar
+          collapsed={mobileOpen ? false : collapsed}
+          onToggleCollapse={toggleCollapsed}
+          onCloseMobile={closeMobile}
+          isMobileOpen={mobileOpen}
+        />
       </div>
 
       {/* Main content */}

@@ -16,6 +16,7 @@ import {
   Mail,
   Play,
   Server,
+  X,
 } from "lucide-react";
 import { AutoRegLogo } from "@/components/ui/logo";
 import Link from "next/link";
@@ -38,9 +39,11 @@ const NAV_ITEMS = [
 interface SidebarProps {
   collapsed?: boolean;
   onToggleCollapse?: () => void;
+  onCloseMobile?: () => void;
+  isMobileOpen?: boolean;
 }
 
-export function Sidebar({ collapsed = false, onToggleCollapse }: SidebarProps) {
+export function Sidebar({ collapsed = false, onToggleCollapse, onCloseMobile, isMobileOpen = false }: SidebarProps) {
   const pathname = usePathname();
   const { theme } = useTheme();
   const dark = theme === "dark";
@@ -56,17 +59,33 @@ export function Sidebar({ collapsed = false, onToggleCollapse }: SidebarProps) {
       {/* Logo */}
       <div className={cn(
         "flex h-16 items-center border-b",
-        collapsed ? "justify-center px-2" : "gap-3 px-5",
+        collapsed ? "justify-center px-2" : "justify-between px-5",
         dark ? "border-gray-800/60" : "border-slate-200",
       )}>
-        <AutoRegLogo size={collapsed ? 32 : 40} />
-        {!collapsed && (
-          <div>
-            <span className={cn("text-lg font-bold tracking-tight", dark ? "text-white" : "text-slate-900")}>
-              AutoReg
-            </span>
-            <div className="h-0.5 w-8 rounded-full bg-gradient-to-r from-blue-500 to-violet-500" />
-          </div>
+        <div className={cn("flex items-center", collapsed ? "" : "gap-3")}>
+          <AutoRegLogo size={collapsed ? 32 : 40} />
+          {!collapsed && (
+            <div>
+              <span className={cn("text-lg font-bold tracking-tight", dark ? "text-white" : "text-slate-900")}>
+                AutoReg
+              </span>
+              <div className="h-0.5 w-8 rounded-full bg-gradient-to-r from-blue-500 to-violet-500" />
+            </div>
+          )}
+        </div>
+        {/* Close button on mobile when sidebar is open as overlay */}
+        {!collapsed && isMobileOpen && (
+          <button
+            onClick={onCloseMobile}
+            className={cn(
+              "rounded-lg p-1.5 transition-colors lg:hidden",
+              dark
+                ? "text-gray-400 hover:bg-gray-800 hover:text-white"
+                : "text-slate-400 hover:bg-slate-100 hover:text-slate-900",
+            )}
+          >
+            <X className="h-5 w-5" />
+          </button>
         )}
       </div>
 
@@ -84,6 +103,7 @@ export function Sidebar({ collapsed = false, onToggleCollapse }: SidebarProps) {
                 <Link
                   href={href}
                   title={collapsed ? label : undefined}
+                  onClick={onCloseMobile}
                   className={cn(
                     "group relative flex items-center rounded-lg text-sm font-medium transition-all duration-200",
                     collapsed ? "justify-center px-2 py-2.5" : "gap-3 px-3 py-2.5",
@@ -114,9 +134,9 @@ export function Sidebar({ collapsed = false, onToggleCollapse }: SidebarProps) {
         </ul>
       </nav>
 
-      {/* Collapse toggle (desktop only) */}
+      {/* Collapse toggle — visible on all devices */}
       <div className={cn(
-        "hidden border-t lg:block",
+        "border-t",
         collapsed ? "px-2 py-3" : "px-3 py-3",
         dark ? "border-gray-800/60" : "border-slate-200",
       )}>
