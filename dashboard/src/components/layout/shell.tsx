@@ -45,7 +45,7 @@ export function Shell({ children }: { children: ReactNode }) {
       <div
         className={`${mobileOpen ? "translate-x-0" : "-translate-x-full"} fixed inset-y-0 left-0 z-30 transition-all duration-300 lg:translate-x-0`}
       >
-        <Sidebar collapsed={collapsed} onToggleCollapse={toggleCollapsed} />
+        <Sidebar collapsed={mobileOpen ? false : collapsed} onToggleCollapse={toggleCollapsed} />
       </div>
 
       {/* Main content */}
