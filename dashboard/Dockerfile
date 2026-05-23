@@ -39,6 +39,9 @@ COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
 
+# Create data directory for user store (writable by nextjs)
+RUN mkdir -p /app/.data && chown nextjs:nodejs /app/.data
+
 USER nextjs
 
 EXPOSE 3000
