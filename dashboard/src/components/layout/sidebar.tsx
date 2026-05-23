@@ -50,15 +50,15 @@ export function Sidebar({ collapsed = false, onToggleCollapse, onCloseMobile, is
 
   return (
     <aside className={cn(
-      "fixed inset-y-0 left-0 z-30 flex flex-col border-r backdrop-blur-xl transition-all duration-300",
+      "flex h-full flex-col border-r backdrop-blur-xl transition-all duration-300",
       collapsed ? "w-16" : "w-64",
       dark
         ? "border-gray-800/60 bg-gray-950/95"
-        : "border-slate-200 bg-white/90",
+        : "border-slate-200 bg-white/95",
     )}>
       {/* Logo */}
       <div className={cn(
-        "flex h-16 items-center border-b",
+        "flex h-16 shrink-0 items-center border-b",
         collapsed ? "justify-center px-2" : "justify-between px-5",
         dark ? "border-gray-800/60" : "border-slate-200",
       )}>
@@ -73,12 +73,11 @@ export function Sidebar({ collapsed = false, onToggleCollapse, onCloseMobile, is
             </div>
           )}
         </div>
-        {/* Close button on mobile when sidebar is open as overlay */}
         {!collapsed && isMobileOpen && (
           <button
             onClick={onCloseMobile}
             className={cn(
-              "rounded-lg p-1.5 transition-colors lg:hidden",
+              "rounded-lg p-1.5 transition-colors",
               dark
                 ? "text-gray-400 hover:bg-gray-800 hover:text-white"
                 : "text-slate-400 hover:bg-slate-100 hover:text-slate-900",
@@ -103,7 +102,7 @@ export function Sidebar({ collapsed = false, onToggleCollapse, onCloseMobile, is
                 <Link
                   href={href}
                   title={collapsed ? label : undefined}
-                  onClick={onCloseMobile}
+                  onClick={isMobileOpen ? onCloseMobile : undefined}
                   className={cn(
                     "group relative flex items-center rounded-lg text-sm font-medium transition-all duration-200",
                     collapsed ? "justify-center px-2 py-2.5" : "gap-3 px-3 py-2.5",
@@ -134,39 +133,40 @@ export function Sidebar({ collapsed = false, onToggleCollapse, onCloseMobile, is
         </ul>
       </nav>
 
-      {/* Collapse toggle — hidden on mobile overlay, visible otherwise */}
-      <div className={cn(
-        "border-t",
-        isMobileOpen ? "hidden" : "block",
-        collapsed ? "px-2 py-3" : "px-3 py-3",
-        dark ? "border-gray-800/60" : "border-slate-200",
-      )}>
-        <button
-          onClick={onToggleCollapse}
-          className={cn(
-            "flex w-full items-center rounded-lg py-2 text-xs font-medium transition-all duration-200",
-            collapsed ? "justify-center px-2" : "gap-2 px-3",
-            dark
-              ? "text-gray-500 hover:bg-gray-800/60 hover:text-gray-300"
-              : "text-slate-400 hover:bg-slate-100 hover:text-slate-600",
-          )}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          {collapsed ? (
-            <ChevronRight className="h-4 w-4" />
-          ) : (
-            <>
-              <ChevronLeft className="h-4 w-4" />
-              <span>Collapse</span>
-            </>
-          )}
-        </button>
-      </div>
+      {/* Collapse toggle — desktop only */}
+      {!isMobileOpen && (
+        <div className={cn(
+          "shrink-0 border-t",
+          collapsed ? "px-2 py-3" : "px-3 py-3",
+          dark ? "border-gray-800/60" : "border-slate-200",
+        )}>
+          <button
+            onClick={onToggleCollapse}
+            className={cn(
+              "flex w-full items-center rounded-lg py-2 text-xs font-medium transition-all duration-200",
+              collapsed ? "justify-center px-2" : "gap-2 px-3",
+              dark
+                ? "text-gray-500 hover:bg-gray-800/60 hover:text-gray-300"
+                : "text-slate-400 hover:bg-slate-100 hover:text-slate-600",
+            )}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {collapsed ? (
+              <ChevronRight className="h-4 w-4" />
+            ) : (
+              <>
+                <ChevronLeft className="h-4 w-4" />
+                <span>Collapse</span>
+              </>
+            )}
+          </button>
+        </div>
+      )}
 
       {/* Footer */}
       {!collapsed && (
         <div className={cn(
-          "border-t px-6 py-4",
+          "shrink-0 border-t px-6 py-4",
           dark ? "border-gray-800/60" : "border-slate-200",
         )}>
           <div className="flex items-center gap-2">
