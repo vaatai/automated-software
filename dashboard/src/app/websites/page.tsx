@@ -66,21 +66,21 @@ export default function WebsitesPage() {
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className={`border-b ${tc.tableBorder}`}>
-                  <th className={`px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Name</th>
-                  <th className={`px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Domain</th>
-                  <th className={`px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Status</th>
-                  <th className={`px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Daily Limit</th>
-                  <th className={`px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Actions</th>
+                  <th className={`px-3 sm:px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Name</th>
+                  <th className={`hidden sm:table-cell px-3 sm:px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Domain</th>
+                  <th className={`px-3 sm:px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Status</th>
+                  <th className={`hidden sm:table-cell px-3 sm:px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Daily Limit</th>
+                  <th className={`px-3 sm:px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {data.items.map((w) => (
                   <tr key={w.id} className={tc.tableRow}>
-                    <td className={`px-6 py-4 font-medium ${tc.heading}`}>{w.name}</td>
-                    <td className={`px-6 py-4 ${tc.label} truncate max-w-[200px]`}>{w.domain || w.url}</td>
-                    <td className="px-6 py-4"><StatusBadge status={w.status} /></td>
-                    <td className={`px-6 py-4 font-mono text-sm ${tc.label}`}>{w.max_registrations_per_day}</td>
-                    <td className="px-6 py-4">
+                    <td className={`px-3 sm:px-6 py-4 font-medium ${tc.heading}`}>{w.name}</td>
+                    <td className={`hidden sm:table-cell px-3 sm:px-6 py-4 ${tc.label} truncate max-w-[200px]`}>{w.domain || w.url}</td>
+                    <td className="px-3 sm:px-6 py-4"><StatusBadge status={w.status} /></td>
+                    <td className={`hidden sm:table-cell px-3 sm:px-6 py-4 font-mono text-sm ${tc.label}`}>{w.max_registrations_per_day}</td>
+                    <td className="px-3 sm:px-6 py-4">
                       <button
                         onClick={async () => {
                           if (confirm("Delete this website?")) {
@@ -98,7 +98,7 @@ export default function WebsitesPage() {
               </tbody>
             </table>
           </div>
-          <div className="px-6 pb-4">
+          <div className="px-3 sm:px-6 pb-4">
             <Pagination total={data.total} limit={limit} offset={offset} onChange={setOffset} />
           </div>
         </Card>

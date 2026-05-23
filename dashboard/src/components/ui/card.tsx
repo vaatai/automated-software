@@ -22,7 +22,7 @@ export function Card({
     <div
       onClick={onClick}
       className={cn(
-        "relative rounded-xl border p-6 shadow-lg transition-all duration-300 hover:shadow-xl",
+        "relative rounded-xl border p-4 sm:p-6 shadow-lg transition-all duration-300 hover:shadow-xl",
         dark
           ? "border-gray-800/80 bg-gradient-to-br from-gray-900 to-gray-900/80 hover:border-gray-700/80"
           : "border-slate-200 bg-white/80 hover:border-slate-300",

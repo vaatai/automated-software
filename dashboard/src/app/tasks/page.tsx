@@ -67,25 +67,25 @@ export default function TasksPage() {
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className={`border-b ${tc.tableBorder}`}>
-                  <th className={`px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>ID</th>
-                  <th className={`px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Status</th>
-                  <th className={`px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Error</th>
-                  <th className={`px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Started</th>
+                  <th className={`px-3 sm:px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>ID</th>
+                  <th className={`px-3 sm:px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Status</th>
+                  <th className={`hidden sm:table-cell px-3 sm:px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Error</th>
+                  <th className={`px-3 sm:px-6 py-3.5 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Started</th>
                 </tr>
               </thead>
               <tbody>
                 {activeData.items.map((task) => (
                   <tr key={task.id} className={tc.tableRow}>
-                    <td className={`px-6 py-3.5 font-mono text-xs ${tc.label}`}>#{task.id}</td>
-                    <td className="px-6 py-3.5"><StatusBadge status={task.status} /></td>
-                    <td className={`px-6 py-3.5 text-sm max-w-xs truncate ${tc.label}`}>{task.error_message ?? "\u2014"}</td>
-                    <td className={`px-6 py-3.5 text-xs ${tc.muted}`}>{task.created_at ? timeAgo(task.created_at) : "\u2014"}</td>
+                    <td className={`px-3 sm:px-6 py-3.5 font-mono text-xs ${tc.label}`}>#{task.id}</td>
+                    <td className="px-3 sm:px-6 py-3.5"><StatusBadge status={task.status} /></td>
+                    <td className={`hidden sm:table-cell px-3 sm:px-6 py-3.5 text-sm max-w-xs truncate ${tc.label}`}>{task.error_message ?? "\u2014"}</td>
+                    <td className={`px-3 sm:px-6 py-3.5 text-xs ${tc.muted}`}>{task.created_at ? timeAgo(task.created_at) : "\u2014"}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <div className="px-6 pb-4">
+          <div className="px-3 sm:px-6 pb-4">
             <Pagination total={activeData.total} limit={limit} offset={offset} onChange={setOffset} />
           </div>
         </Card>

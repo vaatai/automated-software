@@ -162,7 +162,7 @@ export default function DashboardPage() {
       {/* Rankings table */}
       {rankings && rankings.length > 0 && (
         <Card className="animate-fade-in-up p-0 overflow-hidden">
-          <CardHeader className="px-6 pt-6">
+          <CardHeader className="px-3 sm:px-6 pt-6">
             <CardTitle className={`text-base font-semibold ${tc.dark ? "text-gray-300" : "text-slate-700"}`}>
               Website Rankings
               <span className={`ml-2 text-xs font-normal ${tc.subtext}`}>7 Days</span>
@@ -172,30 +172,30 @@ export default function DashboardPage() {
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className={`border-b ${tc.tableBorder}`}>
-                  <th className={`px-6 pb-3 pt-0 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Website</th>
-                  <th className={`px-6 pb-3 pt-0 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Total</th>
-                  <th className={`px-6 pb-3 pt-0 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Success</th>
-                  <th className={`px-6 pb-3 pt-0 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Failed</th>
-                  <th className={`px-6 pb-3 pt-0 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Rate</th>
+                  <th className={`px-3 sm:px-6 pb-3 pt-0 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Website</th>
+                  <th className={`px-3 sm:px-6 pb-3 pt-0 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Total</th>
+                  <th className={`hidden sm:table-cell px-3 sm:px-6 pb-3 pt-0 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Success</th>
+                  <th className={`hidden sm:table-cell px-3 sm:px-6 pb-3 pt-0 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Failed</th>
+                  <th className={`px-3 sm:px-6 pb-3 pt-0 text-xs font-semibold uppercase tracking-wider ${tc.tableHead}`}>Rate</th>
                 </tr>
               </thead>
               <tbody>
                 {rankings.map((r, i) => (
                   <tr key={r.website_id} className={tc.tableRow}>
-                    <td className="px-6 py-3.5">
+                    <td className="px-3 sm:px-6 py-3.5">
                       <div className="flex items-center gap-2.5">
                         <span className={`flex h-6 w-6 items-center justify-center rounded-md text-xs font-bold ${
                           tc.dark ? "bg-gray-800 text-gray-400" : "bg-slate-100 text-slate-500"
                         }`}>
                           {i + 1}
                         </span>
-                        <span className={`font-medium ${tc.heading}`}>{r.website_name}</span>
+                        <span className={`font-medium truncate ${tc.heading}`}>{r.website_name}</span>
                       </div>
                     </td>
-                    <td className={`px-6 py-3.5 font-mono ${tc.dark ? "text-gray-300" : "text-slate-600"}`}>{r.total}</td>
-                    <td className="px-6 py-3.5 font-mono text-emerald-400">{r.success}</td>
-                    <td className="px-6 py-3.5 font-mono text-red-400">{r.failure}</td>
-                    <td className="px-6 py-3.5">
+                    <td className={`px-3 sm:px-6 py-3.5 font-mono ${tc.dark ? "text-gray-300" : "text-slate-600"}`}>{r.total}</td>
+                    <td className="hidden sm:table-cell px-3 sm:px-6 py-3.5 font-mono text-emerald-400">{r.success}</td>
+                    <td className="hidden sm:table-cell px-3 sm:px-6 py-3.5 font-mono text-red-400">{r.failure}</td>
+                    <td className="px-3 sm:px-6 py-3.5">
                       <div className="flex items-center gap-2">
                         <div className={`h-1.5 w-16 overflow-hidden rounded-full ${tc.dark ? "bg-gray-800" : "bg-slate-200"}`}>
                           <div
