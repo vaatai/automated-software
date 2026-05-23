@@ -26,11 +26,12 @@ export function Header({
       {/* Top accent line */}
       <div className="h-[2px] w-full bg-gradient-to-r from-blue-500 via-violet-500 to-fuchsia-500 opacity-60" />
 
-      <div className="flex h-14 items-center justify-between px-6">
+      <div className="flex h-14 items-center justify-between px-3 sm:px-6">
         <button
           onClick={onToggleSidebar}
           className={cn(
             "rounded-lg p-2 transition-colors lg:hidden",
+            "active:scale-95",
             dark
               ? "text-gray-400 hover:bg-gray-800/60 hover:text-white"
               : "text-slate-400 hover:bg-slate-100 hover:text-slate-900",
