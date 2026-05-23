@@ -1,9 +1,10 @@
 "use client";
 
+import { useAuth } from "@/contexts/auth-context";
 import { useTheme } from "@/contexts/theme-context";
 import { cn } from "@/lib/utils";
 import { useWebSocket } from "@/hooks/use-websocket";
-import { Menu, Moon, Sun, Wifi, WifiOff } from "lucide-react";
+import { LogOut, Menu, Moon, Sun, Wifi, WifiOff } from "lucide-react";
 
 export function Header({
   onToggleSidebar,
@@ -12,6 +13,7 @@ export function Header({
 }) {
   const { connected } = useWebSocket();
   const { theme, toggle } = useTheme();
+  const { logout } = useAuth();
   const dark = theme === "dark";
 
   return (
@@ -56,6 +58,20 @@ export function Header({
             ) : (
               <Moon className="h-4 w-4 transition-transform duration-300 group-hover:-rotate-12" />
             )}
+          </button>
+
+          {/* Logout button */}
+          <button
+            onClick={logout}
+            className={cn(
+              "flex h-9 w-9 items-center justify-center rounded-xl border transition-all duration-300 hover:scale-105",
+              dark
+                ? "border-gray-700/60 bg-gray-800/60 text-gray-400 hover:border-red-500/40 hover:bg-gray-800 hover:text-red-400"
+                : "border-slate-200 bg-white text-slate-500 shadow-sm hover:border-red-300 hover:bg-red-50 hover:text-red-500",
+            )}
+            title="Sign out"
+          >
+            <LogOut className="h-4 w-4" />
           </button>
 
           {/* Live status indicator */}

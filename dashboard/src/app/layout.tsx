@@ -3,6 +3,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Shell } from "@/components/layout/shell";
 import { ThemeProvider } from "@/contexts/theme-context";
+import { AuthProvider } from "@/contexts/auth-context";
+import { AuthGate } from "@/components/layout/auth-gate";
 import { LoadingScreen } from "@/components/ui/loading-screen";
 
 const geistSans = Geist({
@@ -32,8 +34,12 @@ export default function RootLayout({
     >
       <body>
         <ThemeProvider>
-          <LoadingScreen />
-          <Shell>{children}</Shell>
+          <AuthProvider>
+            <LoadingScreen />
+            <AuthGate>
+              <Shell>{children}</Shell>
+            </AuthGate>
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>
