@@ -244,15 +244,11 @@ services:
       retries: 3
       start_period: 15s
     deploy:
-      replicas: 2
+      replicas: 1
       resources:
         limits:
           memory: 256M
           cpus: "0.5"
-      update_config:
-        parallelism: 1
-        delay: 10s
-        order: start-first
     networks:
       - frontend
 
