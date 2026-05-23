@@ -68,11 +68,11 @@ class FiveSimService(BaseOTPService, SMSProviderAdapter):
         service: str = "any",
         operator: str = "any",
     ) -> RentalResult:
-        country = ISO_TO_FIVESIM.get(country.upper(), country.lower()) if country != "any" else "any"
+        api_country = ISO_TO_FIVESIM.get(country.upper(), country.lower()) if country != "any" else "any"
         async with httpx.AsyncClient() as client:
             try:
                 resp = await client.get(
-                    f"{self._base_url}/user/buy/activation/{country}/{operator}/{service}",
+                    f"{self._base_url}/user/buy/activation/{api_country}/{operator}/{service}",
                     headers=self._headers,
                     timeout=30,
                 )
