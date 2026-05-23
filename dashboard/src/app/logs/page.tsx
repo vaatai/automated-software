@@ -34,7 +34,7 @@ export default function LogsPage() {
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
           <span className="text-gradient">Error Logs</span>
         </h1>
         <p className={`mt-1 text-sm ${tc.subtext}`}>Task logs with level filtering and search</p>

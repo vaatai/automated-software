@@ -26,7 +26,7 @@ export default function WorkersPage() {
   return (
     <div className="space-y-8 animate-fade-in">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
           <span className="text-gradient">Workers</span>
         </h1>
         <p className={`mt-1 text-sm ${tc.subtext}`}>Celery worker health and active tasks</p>

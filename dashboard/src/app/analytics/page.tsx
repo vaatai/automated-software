@@ -54,10 +54,10 @@ export default function AnalyticsPage() {
   if (error) return <ErrorBanner message={error} />;
 
   return (
-    <div className="space-y-8 animate-fade-in">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 sm:space-y-8 animate-fade-in">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
             <span className="text-gradient">Analytics</span>
           </h1>
           <p className={`mt-1 text-sm ${tc.subtext}`}>Registration performance metrics and trends</p>
@@ -105,7 +105,7 @@ export default function AnalyticsPage() {
                 Daily Success Rate
               </CardTitle>
             </CardHeader>
-            <div className="h-72">
+            <div className="h-52 sm:h-72">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={metrics.daily}>
                   <defs>
@@ -134,7 +134,7 @@ export default function AnalyticsPage() {
               <span className={`ml-2 text-xs font-normal ${tc.subtext}`}>Last 48h</span>
             </CardTitle>
           </CardHeader>
-          <div className="h-64">
+          <div className="h-48 sm:h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={hourly}>
                 <CartesianGrid strokeDasharray="3 3" stroke={gridColor} strokeOpacity={0.5} />
@@ -157,7 +157,7 @@ export default function AnalyticsPage() {
               <span className={`ml-2 text-xs font-normal ${tc.subtext}`}>12 Weeks</span>
             </CardTitle>
           </CardHeader>
-          <div className="h-64">
+          <div className="h-48 sm:h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={weekly}>
                 <CartesianGrid strokeDasharray="3 3" stroke={gridColor} strokeOpacity={0.5} />

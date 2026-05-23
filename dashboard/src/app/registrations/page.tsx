@@ -3,22 +3,58 @@
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ErrorBanner } from "@/components/ui/error-banner";
-import { Spinner } from "@/components/ui/spinner";
 import { useFetch } from "@/hooks/use-fetch";
 import { useThemeClasses } from "@/hooks/use-theme-classes";
 import { registrations, websites } from "@/lib/api";
-import { Play, Rocket } from "lucide-react";
+import { Phone, Play, Rocket } from "lucide-react";
 import { useState } from "react";
+
+const COUNTRIES = [
+  { code: "US", name: "United States", dial: "+1" },
+  { code: "GB", name: "United Kingdom", dial: "+44" },
+  { code: "IN", name: "India", dial: "+91" },
+  { code: "RU", name: "Russia", dial: "+7" },
+  { code: "DE", name: "Germany", dial: "+49" },
+  { code: "FR", name: "France", dial: "+33" },
+  { code: "BR", name: "Brazil", dial: "+55" },
+  { code: "CA", name: "Canada", dial: "+1" },
+  { code: "AU", name: "Australia", dial: "+61" },
+  { code: "JP", name: "Japan", dial: "+81" },
+  { code: "KR", name: "South Korea", dial: "+82" },
+  { code: "CN", name: "China", dial: "+86" },
+  { code: "ID", name: "Indonesia", dial: "+62" },
+  { code: "PH", name: "Philippines", dial: "+63" },
+  { code: "NG", name: "Nigeria", dial: "+234" },
+  { code: "PK", name: "Pakistan", dial: "+92" },
+  { code: "MX", name: "Mexico", dial: "+52" },
+  { code: "TR", name: "Turkey", dial: "+90" },
+  { code: "EG", name: "Egypt", dial: "+20" },
+  { code: "UA", name: "Ukraine", dial: "+380" },
+  { code: "PL", name: "Poland", dial: "+48" },
+  { code: "NL", name: "Netherlands", dial: "+31" },
+  { code: "SE", name: "Sweden", dial: "+46" },
+  { code: "IT", name: "Italy", dial: "+39" },
+  { code: "ES", name: "Spain", dial: "+34" },
+  { code: "TH", name: "Thailand", dial: "+66" },
+  { code: "VN", name: "Vietnam", dial: "+84" },
+  { code: "ZA", name: "South Africa", dial: "+27" },
+  { code: "KE", name: "Kenya", dial: "+254" },
+  { code: "CO", name: "Colombia", dial: "+57" },
+];
 
 export default function RegistrationsPage() {
   const { data: siteList } = useFetch(() => websites.list({ limit: 100, offset: 0 }), []);
   const [selectedWebsite, setSelectedWebsite] = useState<number | null>(null);
   const [count, setCount] = useState(1);
   const [priority, setPriority] = useState("normal");
+  const [phoneCountry, setPhoneCountry] = useState("US");
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const tc = useThemeClasses();
+
+  const selectedSite = siteList?.items.find((w) => w.id === selectedWebsite);
+  const needsMobileOtp = selectedSite?.requires_mobile_otp;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,8 +63,9 @@ export default function RegistrationsPage() {
     setErr(null);
     setResult(null);
     try {
-      await registrations.create({ website_id: selectedWebsite, count, priority });
-      setResult(`Queued ${count} registration(s)`);
+      const custom_data = needsMobileOtp ? { phone_country: phoneCountry } : undefined;
+      await registrations.create({ website_id: selectedWebsite, count, priority, custom_data });
+      setResult(`Queued ${count} registration(s)${needsMobileOtp ? ` with ${phoneCountry} numbers` : ""}`);
     } catch (error) {
       setErr(error instanceof Error ? error.message : "Failed");
     } finally {
@@ -37,9 +74,9 @@ export default function RegistrationsPage() {
   };
 
   return (
-    <div className="space-y-8 animate-fade-in">
+    <div className="space-y-8 animate-fade-in px-0 sm:px-0">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
           <span className="text-gradient">Registrations</span>
         </h1>
         <p className={`mt-1 text-sm ${tc.subtext}`}>Queue new registration tasks</p>
@@ -66,12 +103,12 @@ export default function RegistrationsPage() {
             >
               <option value="" disabled>Select a website</option>
               {siteList?.items.map((w) => (
-                <option key={w.id} value={w.id}>{w.name} ({w.domain})</option>
+                <option key={w.id} value={w.id}>{w.name} ({w.url || w.domain})</option>
               ))}
             </select>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
             <div>
               <label className={`mb-1.5 block text-sm font-medium ${tc.label}`}>Count</label>
               <input
@@ -92,6 +129,25 @@ export default function RegistrationsPage() {
               </select>
             </div>
           </div>
+
+          {/* Country selector for mobile OTP */}
+          {needsMobileOtp && (
+            <div className="animate-fade-in-up">
+              <label className={`mb-1.5 flex items-center gap-2 text-sm font-medium ${tc.label}`}>
+                <Phone className="h-3.5 w-3.5" /> Phone Number Country
+              </label>
+              <select
+                value={phoneCountry}
+                onChange={(e) => setPhoneCountry(e.target.value)}
+                className={tc.inputCls}
+              >
+                {COUNTRIES.map((c) => (
+                  <option key={c.code} value={c.code}>{c.name} ({c.dial})</option>
+                ))}
+              </select>
+              <p className={`mt-1 text-xs ${tc.muted}`}>Country for renting temporary phone numbers for this batch</p>
+            </div>
+          )}
 
           {err && <ErrorBanner message={err} />}
           {result && (

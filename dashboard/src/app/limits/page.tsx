@@ -24,7 +24,7 @@ export default function LimitsPage() {
     <div className="space-y-8 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
             <span className="text-gradient">Daily Limits</span>
           </h1>
           <p className={`mt-1 text-sm ${tc.subtext}`}>Per-website daily usage and utilization</p>
