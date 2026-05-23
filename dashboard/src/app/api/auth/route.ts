@@ -19,19 +19,19 @@ export async function POST(request: NextRequest) {
       const token = createToken(user.id, user.identifier);
       return Response.json({ ok: true, token, displayName: user.displayName });
     }
-    return Response.json({ ok: false, error: "Invalid password" }, { status: 401 });
+    return Response.json({ ok: false, error: "Invalid credentials" }, { status: 401 });
   }
 
   // Fallback to env-based admin credentials (username or email match)
   if (
-    (identifier === DASHBOARD_USER || identifier === "admin") &&
+    identifier === DASHBOARD_USER &&
     password === DASHBOARD_PASS
   ) {
     const token = createToken("env-admin", identifier);
     return Response.json({ ok: true, token, displayName: "Admin" });
   }
 
-  return Response.json({ ok: false, error: "Account not found" }, { status: 401 });
+  return Response.json({ ok: false, error: "Invalid credentials" }, { status: 401 });
 }
 
 export async function PUT(request: NextRequest) {

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { findUser, createUser, createToken } from "../users";
+import { createUser, createToken } from "../users";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
@@ -25,13 +25,11 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const existing = findUser(identifier);
-  if (existing) {
-    return Response.json({ ok: false, error: "Account already exists with this " + identifierType }, { status: 409 });
-  }
-
   const name = displayName || identifier.split("@")[0] || "User";
   const user = createUser(identifier, identifierType, name, password);
+  if (!user) {
+    return Response.json({ ok: false, error: "Account already exists with this " + identifierType }, { status: 409 });
+  }
   const token = createToken(user.id, user.identifier);
 
   return Response.json({ ok: true, token, displayName: user.displayName });

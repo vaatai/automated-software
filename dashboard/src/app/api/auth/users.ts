@@ -47,12 +47,16 @@ export function findUser(identifier: string): StoredUser | undefined {
   return users.find((u) => u.identifier.toLowerCase() === normalized);
 }
 
-export function createUser(identifier: string, identifierType: "email" | "phone", displayName: string, password: string): StoredUser {
+export function createUser(identifier: string, identifierType: "email" | "phone", displayName: string, password: string): StoredUser | null {
   const users = loadUsers();
+  const normalized = identifier.toLowerCase().trim();
+  if (users.some((u) => u.identifier.toLowerCase() === normalized)) {
+    return null;
+  }
   const salt = randomBytes(16).toString("hex");
   const user: StoredUser = {
     id: randomBytes(8).toString("hex"),
-    identifier: identifier.toLowerCase().trim(),
+    identifier: normalized,
     identifierType,
     displayName,
     passwordHash: hashPassword(password, salt),

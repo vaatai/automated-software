@@ -30,7 +30,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       const detected: Theme = prefersDark ? "dark" : "light";
       setTheme(detected);
       applyTheme(detected);
-      localStorage.setItem("autoreg-theme", detected);
     }
   }, []);
 
