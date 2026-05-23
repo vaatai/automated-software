@@ -134,9 +134,10 @@ export function Sidebar({ collapsed = false, onToggleCollapse, onCloseMobile, is
         </ul>
       </nav>
 
-      {/* Collapse toggle — visible on all devices */}
+      {/* Collapse toggle — hidden on mobile overlay, visible otherwise */}
       <div className={cn(
         "border-t",
+        isMobileOpen ? "hidden" : "block",
         collapsed ? "px-2 py-3" : "px-3 py-3",
         dark ? "border-gray-800/60" : "border-slate-200",
       )}>
