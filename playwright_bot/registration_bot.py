@@ -269,13 +269,23 @@ class RegistrationBot:
                                     await el.fill(pa.get("value", ""))
                                 await page.wait_for_timeout(pa_wait)  # type: ignore[union-attr]
                                 logger.info("[reg-%d] Pre-action %d completed", registration_id, pa_idx)
+                            elif pa_optional:
+                                logger.info("[reg-%d] Pre-action %d: selector not found (optional, skipped)", registration_id, pa_idx)
                             else:
-                                logger.info("[reg-%d] Pre-action %d: selector not found (skipped)", registration_id, pa_idx)
+                                err_msg = f"Required pre-action {pa_idx} selector not found: {pa_selector}"
+                                logger.error("[reg-%d] %s", registration_id, err_msg)
+                                result["error"] = err_msg
+                                result["screenshot"] = await session.screenshot("pre_action_fail")
+                                return result
                         except Exception as pa_exc:
                             if pa_optional:
                                 logger.info("[reg-%d] Pre-action %d failed (optional, skipped): %s", registration_id, pa_idx, pa_exc)
                             else:
-                                logger.warning("[reg-%d] Pre-action %d failed: %s", registration_id, pa_idx, pa_exc)
+                                err_msg = f"Required pre-action {pa_idx} failed: {pa_exc}"
+                                logger.error("[reg-%d] %s", registration_id, err_msg)
+                                result["error"] = err_msg
+                                result["screenshot"] = await session.screenshot("pre_action_fail")
+                                return result
                     if pre_actions:
                         result["steps_completed"].append("pre_actions")
 

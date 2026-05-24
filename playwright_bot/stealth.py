@@ -136,12 +136,7 @@ STEALTH_SCRIPTS: list[str] = [
         addEventListener: () => {}
     });
     """,
-    # Override platform
-    """
-    Object.defineProperty(navigator, 'platform', {
-        get: () => 'Win32'
-    });
-    """,
+    # Platform override — dynamically set via get_stealth_scripts(user_agent=...)
     # Media devices (microphone, camera existence)
     """
     if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
@@ -178,5 +173,22 @@ def random_timezone() -> str:
     return random.choice(TIMEZONES)
 
 
-def get_stealth_scripts() -> list[str]:
-    return STEALTH_SCRIPTS.copy()
+def _platform_for_ua(user_agent: str) -> str:
+    """Return the correct navigator.platform for a given user agent."""
+    ua = user_agent.lower()
+    if "macintosh" in ua or "mac os" in ua:
+        return "MacIntel"
+    if "linux" in ua or "x11" in ua:
+        return "Linux x86_64"
+    return "Win32"
+
+
+def get_stealth_scripts(user_agent: str = "") -> list[str]:
+    scripts = STEALTH_SCRIPTS.copy()
+    platform = _platform_for_ua(user_agent)
+    scripts.append(f"""
+    Object.defineProperty(navigator, 'platform', {{
+        get: () => '{platform}'
+    }});
+    """)
+    return scripts
