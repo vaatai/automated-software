@@ -95,6 +95,21 @@ export const registrations = {
     request<unknown>("/api/registrations/", { method: "POST", body: JSON.stringify(data) }),
 };
 
+// ── Rentals ───────────────────────────────────────────────
+export const rentals = {
+  list: (p?: { country?: string; active_only?: boolean; limit?: number; offset?: number }) =>
+    request<RentalListResponse>(`/api/rentals/${qs({ ...p })}`),
+  active: (country?: string) =>
+    request<RentalListResponse>(`/api/rentals/active${qs({ country })}`),
+  rent: (data: { country: string; label?: string }) =>
+    request<RentalItem>("/api/rentals/rent", { method: "POST", body: JSON.stringify(data) }),
+  release: (id: number) =>
+    request<RentalItem>(`/api/rentals/${id}/release`, { method: "POST" }),
+  reusable: (country: string) =>
+    request<{ found: boolean; rental: RentalItem | null }>(`/api/rentals/reusable${qs({ country })}`),
+  get: (id: number) => request<RentalItem>(`/api/rentals/${id}`),
+};
+
 // ── Tasks ─────────────────────────────────────────────────
 export const tasks = {
   get: (id: string) => request<TaskDetail>(`/api/tasks/${id}`),
@@ -228,3 +243,13 @@ export interface LimitUsageHistory {
   website_id: number; days: number;
   history: { date: string; registration_count: number; success_count: number; failure_count: number }[];
 }
+
+export interface RentalItem {
+  id: number; provider: string; status: string;
+  order_id: string; phone_number: string; country: string | null;
+  otp_code: string | null; otp_count: number; label: string | null;
+  expires_at: string | null; remaining_seconds: number;
+  rented_at: string; otp_received_at: string | null;
+  released_at: string | null;
+}
+export interface RentalListResponse { items: RentalItem[]; total: number }
