@@ -9,11 +9,10 @@ import { Spinner } from "@/components/ui/spinner";
 import { StatCard } from "@/components/ui/stat-card";
 import { useFetch } from "@/hooks/use-fetch";
 import { useThemeClasses } from "@/hooks/use-theme-classes";
-import { useWebSocket } from "@/hooks/use-websocket";
 import { monitoring } from "@/lib/api";
 import { formatNumber, timeAgo } from "@/lib/utils";
 import { Activity, Clock, Zap } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 export default function TasksPage() {
   const [offset, setOffset] = useState(0);
@@ -31,12 +30,6 @@ export default function TasksPage() {
     [offset],
     10000,
   );
-
-  const { lastMessage } = useWebSocket<{ type: string }>();
-
-  useEffect(() => {
-    if (lastMessage?.type === "registration_update") refetch();
-  }, [lastMessage, refetch]);
 
   if (loading && !overview) return <Spinner />;
   if (error) return <ErrorBanner message={error} />;
