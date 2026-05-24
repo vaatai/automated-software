@@ -221,11 +221,13 @@ class BrowserManager:
         headless: bool = True,
         default_timeout_ms: int = 30_000,
         navigation_timeout_ms: int = 30_000,
+        proxy: dict | None = None,
     ) -> None:
         self._max_contexts = max_contexts
         self._headless = headless
         self._default_timeout_ms = default_timeout_ms
         self._navigation_timeout_ms = navigation_timeout_ms
+        self._proxy = proxy
         self._semaphore = asyncio.Semaphore(max_contexts)
         self._pw: Playwright | None = None
         self._browser: Browser | None = None
@@ -242,16 +244,19 @@ class BrowserManager:
         if self._browser:
             return
         self._pw = await async_playwright().start()
-        self._browser = await self._pw.chromium.launch(
-            headless=self._headless,
-            args=[
+        launch_kwargs: dict = {
+            "headless": self._headless,
+            "args": [
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
                 "--disable-dev-shm-usage",
                 "--disable-gpu",
                 "--disable-setuid-sandbox",
             ],
-        )
+        }
+        if self._proxy:
+            launch_kwargs["proxy"] = self._proxy
+        self._browser = await self._pw.chromium.launch(**launch_kwargs)
         logger.info(
             "BrowserManager started (max_contexts=%d, headless=%s)",
             self._max_contexts,
