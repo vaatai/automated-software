@@ -181,6 +181,30 @@ def _do_registration(
         if not website:
             raise ValueError(f"Website {website_id} not found")
 
+        logger.info(
+            "Registration %d: website=%s url=%s email_otp=%s mobile_otp=%s",
+            registration_id, website.name, website.url,
+            website.requires_email_otp, website.requires_mobile_otp,
+        )
+
+        # Log form_config summary for debugging
+        form_cfg = website.form_config or {}
+        steps = form_cfg.get("steps", [])
+        total_fields = sum(len(s.get("fields", {})) for s in steps)
+        logger.info(
+            "Registration %d: form_config has %d steps, %d total fields, "
+            "registration_url=%s, success_indicator=%s",
+            registration_id, len(steps), total_fields,
+            form_cfg.get("registration_url", "not set"),
+            bool(form_cfg.get("success_indicator", {}).get("selector")),
+        )
+        if total_fields == 0:
+            logger.warning(
+                "Registration %d: WARNING — no form fields configured! "
+                "The bot will navigate and submit but cannot fill any fields.",
+                registration_id,
+            )
+
         # Mark IN_PROGRESS
         db.execute(
             update(Registration)
@@ -603,26 +627,57 @@ async def _run_isolated_registration(
     - Isolated cookies and storage
     - Per-task proxy
     - Headless mode
+    - Automatic retry for transient browser launch failures
     """
-    mgr = BrowserManager(
-        max_contexts=1,
-        headless=True,
-        default_timeout_ms=settings.OTP_POLL_TIMEOUT_SECONDS * 1000,
-        navigation_timeout_ms=30_000,
-        proxy=proxy_config,
-    )
-    await mgr.start()
-    try:
-        bot = RegistrationBot(browser_manager=mgr)
-        return await bot.register(
-            website_config=website_config,
-            registration_id=registration_id,
-            requires_email_otp=requires_email_otp,
-            requires_mobile_otp=requires_mobile_otp,
-            attempt_number=attempt_number,
+    max_browser_retries = 2
+    last_exc: Exception | None = None
+
+    for browser_attempt in range(1, max_browser_retries + 1):
+        mgr = BrowserManager(
+            max_contexts=1,
+            headless=True,
+            default_timeout_ms=settings.OTP_POLL_TIMEOUT_SECONDS * 1000,
+            navigation_timeout_ms=30_000,
+            proxy=proxy_config,
         )
-    finally:
-        await mgr.stop()
+        try:
+            logger.info(
+                "Registration %d: launching browser (attempt %d/%d)",
+                registration_id, browser_attempt, max_browser_retries,
+            )
+            await mgr.start()
+            bot = RegistrationBot(browser_manager=mgr)
+            return await bot.register(
+                website_config=website_config,
+                registration_id=registration_id,
+                requires_email_otp=requires_email_otp,
+                requires_mobile_otp=requires_mobile_otp,
+                attempt_number=attempt_number,
+            )
+        except Exception as exc:
+            last_exc = exc
+            logger.warning(
+                "Registration %d: browser attempt %d/%d failed: %s",
+                registration_id, browser_attempt, max_browser_retries, exc,
+            )
+            if browser_attempt < max_browser_retries:
+                await asyncio.sleep(2)
+        finally:
+            try:
+                await mgr.stop()
+            except Exception:
+                pass
+
+    return {
+        "registration_id": registration_id,
+        "status": "failed",
+        "error": f"Browser launch failed after {max_browser_retries} attempts: {last_exc}",
+        "error_context": {
+            "category": "browser_crash",
+            "error_type": "BrowserLaunchFailed",
+            "error_message": str(last_exc),
+        },
+    }
 
 
 # ── dead-letter sender ──────────────────────────────────────
