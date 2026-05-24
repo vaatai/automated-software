@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from api.auth import router as auth_router
+from api.campaigns import router as campaigns_router
 from api.daily_limits import router as daily_limits_router
 from api.dashboard import router as dashboard_router
 from api.health import router as health_router
@@ -77,6 +78,7 @@ app.include_router(tasks_router)
 app.include_router(proxies_router)
 app.include_router(monitoring_router)
 app.include_router(webhooks_router)
+app.include_router(campaigns_router)
 
 # ── Celery security hardening ──────────────────────────────
 apply_celery_security(celery_app, redis_ssl=settings.CELERY_REDIS_SSL)
