@@ -134,6 +134,7 @@ async def launch_campaign(body: CampaignRequest, db: AsyncSession = Depends(get_
                 count=entry.count,
                 custom_data=custom_data,
                 priority=entry.priority,
+                cooldown_seconds=0,
             )
             er.queued = result.get("total_queued", 0)
             total_queued += er.queued
