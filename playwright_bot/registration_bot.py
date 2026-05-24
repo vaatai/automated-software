@@ -13,6 +13,8 @@ Integrates centralized error handling for:
 """
 
 import logging
+import random
+import string
 import time
 
 from otp.fivesim_service import FiveSimService
@@ -247,6 +249,46 @@ class RegistrationBot:
                     # Screenshot after navigation
                     await session.screenshot("after_navigation")
 
+                    # ── Step 2c: Execute pre-actions (cookie popups, etc.) ──
+                    pre_actions = form_cfg.get("pre_actions", [])
+                    for pa_idx, pa in enumerate(pre_actions):
+                        pa_type = pa.get("type", "click")
+                        pa_selector = pa.get("selector", "")
+                        pa_optional = pa.get("optional", True)
+                        pa_wait = pa.get("wait_ms", 1000)
+                        logger.info(
+                            "[reg-%d] Pre-action %d: %s on '%s' (optional=%s)",
+                            registration_id, pa_idx, pa_type, pa_selector, pa_optional,
+                        )
+                        try:
+                            el = await page.query_selector(pa_selector)  # type: ignore[union-attr]
+                            if el:
+                                if pa_type == "click":
+                                    await el.click()
+                                elif pa_type == "fill":
+                                    await el.fill(pa.get("value", ""))
+                                await page.wait_for_timeout(pa_wait)  # type: ignore[union-attr]
+                                logger.info("[reg-%d] Pre-action %d completed", registration_id, pa_idx)
+                            elif pa_optional:
+                                logger.info("[reg-%d] Pre-action %d: selector not found (optional, skipped)", registration_id, pa_idx)
+                            else:
+                                err_msg = f"Required pre-action {pa_idx} selector not found: {pa_selector}"
+                                logger.error("[reg-%d] %s", registration_id, err_msg)
+                                result["error"] = err_msg
+                                result["screenshot"] = await session.screenshot("pre_action_fail")
+                                return result
+                        except Exception as pa_exc:
+                            if pa_optional:
+                                logger.info("[reg-%d] Pre-action %d failed (optional, skipped): %s", registration_id, pa_idx, pa_exc)
+                            else:
+                                err_msg = f"Required pre-action {pa_idx} failed: {pa_exc}"
+                                logger.error("[reg-%d] %s", registration_id, err_msg)
+                                result["error"] = err_msg
+                                result["screenshot"] = await session.screenshot("pre_action_fail")
+                                return result
+                    if pre_actions:
+                        result["steps_completed"].append("pre_actions")
+
                     # ── Step 3a: Check for Cloudflare challenge ──
                     cloudflare_blocked = await self._detect_cloudflare(page)
                     if cloudflare_blocked:
@@ -318,6 +360,16 @@ class RegistrationBot:
                         result["html_snapshot"] = ctx.html_snapshot_path
                         return result
                     result["steps_completed"].append("selectors_validated")
+
+                    # ── Step 3d: Ensure email is available for form filling ──
+                    if "email" not in reg_data:
+                        random_part = ''.join(random.choices(string.ascii_lowercase + string.digits, k=10))
+                        reg_data["email"] = f"{random_part}@mailslurp.net"
+                        logger.info(
+                            "[reg-%d] Generated fallback email for form: %s",
+                            registration_id, reg_data["email"],
+                        )
+                        result["email_used"] = result["email_used"] or reg_data["email"]
 
                     # ── Step 4: Fill fields + submit ──
                     steps = form_cfg.get("steps", [])
@@ -657,8 +709,13 @@ class RegistrationBot:
                 elif field_type == "radio":
                     await page.click(sel)  # type: ignore[union-attr]
                 else:
-                    await page.fill(sel, str(val))  # type: ignore[union-attr]
-                await page.wait_for_timeout(300)  # type: ignore[union-attr]
+                    # Click field first, then type with human-like delays
+                    await page.click(sel)  # type: ignore[union-attr]
+                    await page.wait_for_timeout(random.randint(100, 300))  # type: ignore[union-attr]
+                    await page.fill(sel, "")  # type: ignore[union-attr]
+                    await page.type(sel, str(val), delay=random.randint(30, 80))  # type: ignore[union-attr]
+                # Human-like pause between fields
+                await page.wait_for_timeout(random.randint(300, 800))  # type: ignore[union-attr]
                 logger.info("[reg-%d] Step %d: field '%s' filled OK", registration_id, step_idx, name)
             except Exception as exc:
                 logger.warning(

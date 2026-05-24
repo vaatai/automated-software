@@ -343,7 +343,7 @@ class BrowserManager:
         )
 
         # Inject stealth scripts into every new page in this context
-        for script in get_stealth_scripts():
+        for script in get_stealth_scripts(user_agent=ua):
             await context.add_init_script(script)
 
         # Start tracing for debugging
