@@ -32,10 +32,11 @@ export default function TasksPage() {
     10000,
   );
 
-  const { lastMessage } = useWebSocket<{ type: string }>();
+  const { lastMessage } = useWebSocket();
 
   useEffect(() => {
-    if (lastMessage?.type === "registration_update") refetch();
+    const msg = lastMessage as { type?: string } | null;
+    if (msg?.type === "registration_update") refetch();
   }, [lastMessage, refetch]);
 
   if (loading && !overview) return <Spinner />;
