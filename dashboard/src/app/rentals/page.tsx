@@ -76,16 +76,20 @@ export default function RentalsPage() {
   const tc = useThemeClasses();
   const [showRentDialog, setShowRentDialog] = useState(false);
   const [rentCountry, setRentCountry] = useState("US");
+  const [rentDuration, setRentDuration] = useState(24);
+  const [customDuration, setCustomDuration] = useState("");
   const [rentLabel, setRentLabel] = useState("");
   const [renting, setRenting] = useState(false);
   const [rentErr, setRentErr] = useState<string | null>(null);
   const [releasing, setReleasing] = useState<number | null>(null);
 
+  const effectiveDuration = rentDuration === -1 ? (parseFloat(customDuration) || 1) : rentDuration;
+
   const handleRent = useCallback(async () => {
     setRenting(true);
     setRentErr(null);
     try {
-      await rentals.rent({ country: rentCountry, label: rentLabel || undefined });
+      await rentals.rent({ country: rentCountry, label: rentLabel || undefined, duration_hours: effectiveDuration });
       setShowRentDialog(false);
       setRentLabel("");
       refetch();
@@ -94,7 +98,7 @@ export default function RentalsPage() {
     } finally {
       setRenting(false);
     }
-  }, [rentCountry, rentLabel, refetch]);
+  }, [rentCountry, rentLabel, effectiveDuration, refetch]);
 
   const handleRelease = useCallback(async (id: number) => {
     setReleasing(id);
@@ -122,7 +126,7 @@ export default function RentalsPage() {
             <span className="text-gradient">Rented Numbers</span>
           </h1>
           <p className={`mt-1 text-sm ${tc.subtext}`}>
-            Manage 24-hour phone number rentals for multi-OTP verification
+            Manage phone number rentals with custom duration for multi-OTP verification
           </p>
         </div>
         <button
@@ -179,7 +183,7 @@ export default function RentalsPage() {
               <div className="rounded-lg bg-blue-500/10 p-2">
                 <Phone className="h-4 w-4 text-blue-400" />
               </div>
-              Rent a Phone Number (24h)
+              Rent a Phone Number
             </CardTitle>
           </CardHeader>
           <div className="space-y-4">
@@ -192,6 +196,55 @@ export default function RentalsPage() {
                   <option key={c.code} value={c.code}>{c.name} ({c.dial})</option>
                 ))}
               </select>
+            </div>
+            <div>
+              <label className={`mb-1.5 flex items-center gap-2 text-sm font-medium ${tc.label}`}>
+                <Clock className="h-3.5 w-3.5" /> Rental Duration
+              </label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { value: 1, label: "1 Hour" },
+                  { value: 6, label: "6 Hours" },
+                  { value: 12, label: "12 Hours" },
+                  { value: 24, label: "24 Hours" },
+                  { value: 48, label: "2 Days" },
+                  { value: -1, label: "Custom" },
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setRentDuration(opt.value)}
+                    className={cn(
+                      "rounded-lg px-3 py-2 text-xs font-medium transition-all",
+                      rentDuration === opt.value
+                        ? "bg-blue-600 text-white shadow-md shadow-blue-500/20"
+                        : tc.dark
+                          ? "bg-gray-800 text-gray-300 hover:bg-gray-700"
+                          : "bg-slate-100 text-slate-600 hover:bg-slate-200",
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              {rentDuration === -1 && (
+                <div className="mt-2 flex items-center gap-2">
+                  <input
+                    type="number"
+                    min={0.5}
+                    max={720}
+                    step={0.5}
+                    value={customDuration}
+                    onChange={(e) => setCustomDuration(e.target.value)}
+                    placeholder="Hours"
+                    className={tc.inputCls}
+                  />
+                  <span className={`text-sm ${tc.muted}`}>hours</span>
+                </div>
+              )}
+              <p className={`mt-1 text-xs ${tc.muted}`}>
+                Number will be available for {effectiveDuration < 1 ? `${Math.round(effectiveDuration * 60)} minutes` : effectiveDuration === 1 ? "1 hour" : `${effectiveDuration} hours`}
+              </p>
             </div>
             <div>
               <label className={`mb-1.5 block text-sm font-medium ${tc.label}`}>Label (optional)</label>

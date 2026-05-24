@@ -81,8 +81,9 @@ class RentalService:
         self,
         country: str = "US",
         label: str | None = None,
+        duration_hours: float = RENTAL_DURATION_HOURS,
     ) -> RentalNumber:
-        """Rent a new phone number for 24 hours.
+        """Rent a new phone number for the specified duration.
 
         Tries 5SIM first, falls back to PVAPins.
         """
@@ -106,7 +107,7 @@ class RentalService:
             order_id=rental_result.order_id,
             phone_number=rental_result.phone_number,
             country=country.upper(),
-            expires_at=now + timedelta(hours=RENTAL_DURATION_HOURS),
+            expires_at=now + timedelta(hours=duration_hours),
             label=label,
         )
         self.db.add(rental)
