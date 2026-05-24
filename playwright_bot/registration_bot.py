@@ -685,9 +685,29 @@ class RegistrationBot:
                 registration_id, step_idx,
             )
 
+        # Field name aliases: map common form field names to reg_data keys
+        field_aliases: dict[str, str] = {
+            "password_again": "password",
+            "confirm_password": "password",
+            "password_confirm": "password",
+            "password2": "password",
+            "pass_confirm": "password",
+            "login": "username",
+            "user": "username",
+            "user_name": "username",
+            "full_name": "full_name",
+            "name": "full_name",
+            "firstname": "first_name",
+            "first_name": "first_name",
+            "lastname": "last_name",
+            "last_name": "last_name",
+            "mail": "email",
+        }
+
         for name, cfg in fields.items():
             sel = cfg.get("selector", "")
-            val = cfg.get("default_value") or reg_data.get(name, "")
+            resolved_key = field_aliases.get(name, name)
+            val = cfg.get("default_value") or reg_data.get(name, "") or reg_data.get(resolved_key, "")
             if not sel:
                 logger.warning("[reg-%d] Step %d field '%s': no selector configured", registration_id, step_idx, name)
                 continue
