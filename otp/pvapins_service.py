@@ -103,6 +103,7 @@ class PVAPinsService(BaseOTPService, SMSProviderAdapter):
         order_id: str,
         timeout: int = 120,
         interval: int = 5,
+        known_otp: str | None = None,
     ) -> SMSResult:
         start = time.monotonic()
 
@@ -121,7 +122,7 @@ class PVAPinsService(BaseOTPService, SMSProviderAdapter):
                     if sms_code and sms_code != "wait":
                         raw_text = str(sms_code)
                         otp = self.extract_otp(raw_text)
-                        if otp:
+                        if otp and otp != known_otp:
                             logger.info("PVAPins OTP extracted: %s", otp)
                             return SMSResult(
                                 otp=otp,
@@ -182,5 +183,6 @@ class PVAPinsService(BaseOTPService, SMSProviderAdapter):
     async def get_otp(self, *, order_id: str, **kwargs: object) -> str | None:
         timeout = int(kwargs.get("timeout", settings.OTP_POLL_TIMEOUT_SECONDS) or 0)
         interval = int(kwargs.get("interval", settings.OTP_POLL_INTERVAL_SECONDS) or 0)
-        result = await self.poll_for_otp(order_id, timeout=timeout, interval=interval)
+        known_otp = str(kwargs.get("known_otp", "") or "") or None
+        result = await self.poll_for_otp(order_id, timeout=timeout, interval=interval, known_otp=known_otp)
         return result.otp

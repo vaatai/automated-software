@@ -232,8 +232,11 @@ class RegistrationBot:
 
                     # 6) mobile OTP
                     if requires_mobile_otp and sms_order_id:
+                        sms_skip_count = int((custom_data or {}).get("reuse_otp_count", 0) or 0)
+                        sms_known_otp = (custom_data or {}).get("reuse_last_otp") or None
                         otp = await self._get_sms_otp_with_tracking(
-                            sms_provider, sms_order_id, error_handler
+                            sms_provider, sms_order_id, error_handler,
+                            skip_count=sms_skip_count, known_otp=sms_known_otp,
                         )
                         if otp:
                             await self._enter_otp(
@@ -478,11 +481,13 @@ class RegistrationBot:
         provider: str | None,
         order_id: str,
         error_handler: ErrorHandler,
+        skip_count: int = 0,
+        known_otp: str | None = None,
     ) -> str | None:
         """Poll for SMS OTP with timeout tracking."""
         tracker = OTPTimeoutDetector(max_wait_seconds=120.0)
         tracker.start_polling()
-        otp = await self._get_sms_otp(provider, order_id)
+        otp = await self._get_sms_otp(provider, order_id, skip_count=skip_count, known_otp=known_otp)
         if not otp:
             timeout_result = tracker.build_timeout_result(
                 otp_type="mobile",
@@ -495,11 +500,14 @@ class RegistrationBot:
             )
         return otp
 
-    async def _get_sms_otp(self, provider: str | None, order_id: str) -> str | None:
+    async def _get_sms_otp(
+        self, provider: str | None, order_id: str,
+        skip_count: int = 0, known_otp: str | None = None,
+    ) -> str | None:
         if provider == "5sim":
-            return await self.fivesim.get_otp(order_id=order_id)
+            return await self.fivesim.get_otp(order_id=order_id, skip_count=skip_count)
         if provider == "pvapins":
-            return await self.pvapins.get_otp(order_id=order_id)
+            return await self.pvapins.get_otp(order_id=order_id, known_otp=known_otp)
         return None
 
     # ── cleanup ────────────────────────────────────────────

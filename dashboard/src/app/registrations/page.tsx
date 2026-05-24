@@ -103,6 +103,8 @@ export default function RegistrationsPage() {
           custom_data.reuse_phone = selectedRental.phone_number;
           custom_data.reuse_provider = selectedRental.provider;
           custom_data.reuse_order_id = selectedRental.order_id;
+          custom_data.reuse_otp_count = selectedRental.otp_count;
+          custom_data.reuse_last_otp = selectedRental.otp_code;
         }
       }
       await registrations.create({

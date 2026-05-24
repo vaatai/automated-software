@@ -107,6 +107,7 @@ class FiveSimService(BaseOTPService, SMSProviderAdapter):
         order_id: str,
         timeout: int = 120,
         interval: int = 5,
+        skip_count: int = 0,
     ) -> SMSResult:
         start = time.monotonic()
 
@@ -122,9 +123,10 @@ class FiveSimService(BaseOTPService, SMSProviderAdapter):
                     data = resp.json()
 
                     sms_list = data.get("sms", [])
-                    if sms_list:
-                        raw_text = sms_list[0].get("text", "")
-                        code = sms_list[0].get("code", "")
+                    new_messages = sms_list[skip_count:]
+                    if new_messages:
+                        raw_text = new_messages[0].get("text", "")
+                        code = new_messages[0].get("code", "")
                         otp = code or self.extract_otp(raw_text)
                         if otp:
                             logger.info("5SIM OTP extracted: %s", otp)
@@ -185,7 +187,8 @@ class FiveSimService(BaseOTPService, SMSProviderAdapter):
     async def get_otp(self, *, order_id: str, **kwargs: object) -> str | None:
         timeout = int(kwargs.get("timeout", settings.OTP_POLL_TIMEOUT_SECONDS) or 0)
         interval = int(kwargs.get("interval", settings.OTP_POLL_INTERVAL_SECONDS) or 0)
-        result = await self.poll_for_otp(order_id, timeout=timeout, interval=interval)
+        skip_count = int(kwargs.get("skip_count", 0) or 0)
+        result = await self.poll_for_otp(order_id, timeout=timeout, interval=interval, skip_count=skip_count)
         return result.otp
 
     async def finish_order(self, order_id: str) -> None:
