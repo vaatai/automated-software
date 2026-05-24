@@ -38,7 +38,7 @@ COPY --from=deps /root/.cache/ms-playwright /root/.cache/ms-playwright
 COPY . .
 
 # Create runtime directories
-RUN mkdir -p screenshots static templates html_snapshots debug_reports browser_logs
+RUN mkdir -p screenshots static templates html_snapshots debug_reports browser_logs traces
 
 # Non-root user for API (workers need root for Playwright)
 RUN adduser --disabled-password --gecos "" appuser

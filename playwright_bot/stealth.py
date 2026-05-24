@@ -81,6 +81,26 @@ STEALTH_SCRIPTS: list[str] = [
         get: () => Math.floor(Math.random() * 4) + 4
     });
     """,
+    # Hide automation-related properties
+    """
+    delete navigator.__proto__.webdriver;
+    """,
+    # Fake screen dimensions to match viewport
+    """
+    Object.defineProperty(screen, 'availWidth', { get: () => window.innerWidth });
+    Object.defineProperty(screen, 'availHeight', { get: () => window.innerHeight });
+    """,
+    # Override connection info
+    """
+    Object.defineProperty(navigator, 'connection', {
+        get: () => ({
+            effectiveType: '4g',
+            rtt: 50,
+            downlink: 10,
+            saveData: false
+        })
+    });
+    """,
 ]
 
 

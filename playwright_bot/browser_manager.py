@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 SCREENSHOT_DIR = "screenshots"
 LOG_DIR = "browser_logs"
 HTML_SNAPSHOT_DIR = "html_snapshots"
+TRACE_DIR = "traces"
 
 
 class BrowserSession:
@@ -192,6 +193,19 @@ class BrowserSession:
         logger.info("Browser logs (JSON) saved: %s", path)
         return path
 
+    async def stop_tracing(self) -> str | None:
+        """Stop Playwright tracing and save the trace zip."""
+        try:
+            os.makedirs(TRACE_DIR, exist_ok=True)
+            ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            path = f"{TRACE_DIR}/{self.session_id}_{ts}.zip"
+            await self.context.tracing.stop(path=path)
+            logger.info("Trace saved: %s", path)
+            return path
+        except Exception as e:
+            logger.debug("Trace save failed: %s", e)
+            return None
+
     async def close(self) -> None:
         """Close the context (page is closed automatically with it)."""
         try:
@@ -252,11 +266,33 @@ class BrowserManager:
                 "--disable-dev-shm-usage",
                 "--disable-gpu",
                 "--disable-setuid-sandbox",
+                # Low-memory VPS optimizations
+                "--single-process",
+                "--disable-extensions",
+                "--disable-background-networking",
+                "--disable-default-apps",
+                "--disable-translate",
+                "--disable-sync",
+                "--metrics-recording-only",
+                "--no-first-run",
+                "--disable-backgrounding-occluded-windows",
+                "--disable-renderer-backgrounding",
+                "--disable-component-update",
+                "--disable-ipc-flooding-protection",
+                "--js-flags=--max-old-space-size=256",
             ],
         }
         if self._proxy:
             launch_kwargs["proxy"] = self._proxy
-        self._browser = await self._pw.chromium.launch(**launch_kwargs)
+        try:
+            self._browser = await self._pw.chromium.launch(**launch_kwargs)
+        except Exception as exc:
+            logger.error("Browser launch failed: %s", exc)
+            # Retry once without --single-process (some environments don't support it)
+            launch_kwargs["args"] = [
+                a for a in launch_kwargs["args"] if a != "--single-process"
+            ]
+            self._browser = await self._pw.chromium.launch(**launch_kwargs)
         logger.info(
             "BrowserManager started (max_contexts=%d, headless=%s)",
             self._max_contexts,
@@ -309,6 +345,12 @@ class BrowserManager:
         # Inject stealth scripts into every new page in this context
         for script in get_stealth_scripts():
             await context.add_init_script(script)
+
+        # Start tracing for debugging
+        try:
+            await context.tracing.start(screenshots=True, snapshots=True)
+        except Exception as e:
+            logger.debug("Tracing start failed (non-fatal): %s", e)
 
         # Set default timeouts
         context.set_default_timeout(self._default_timeout_ms)
