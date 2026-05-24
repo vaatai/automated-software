@@ -121,18 +121,35 @@ class RegistrationBot:
                         reg_data["email"] = inbox["email_address"]
                         result["email_used"] = reg_data["email"]
 
-                    # 2) provision phone number (5SIM → PVAPins fallback)
+                    # 2) provision phone number (reuse active rental or rent new)
                     if requires_mobile_otp:
                         phone_country = (custom_data or {}).get("phone_country", "US")
-                        try:
-                            num = await self.fivesim.rent_number(country=phone_country)
-                            sms_provider = "5sim"
-                        except Exception:
-                            num = await self.pvapins.rent_number(country=phone_country)
-                            sms_provider = "pvapins"
-                        sms_order_id = num.order_id
-                        reg_data["phone"] = num.phone_number
-                        result["phone_used"] = reg_data["phone"]
+                        reuse_rental_id = (custom_data or {}).get("reuse_rental_id")
+
+                        if reuse_rental_id:
+                            # Reuse an existing rented number
+                            from otp.sms_provider import RentalResult
+                            reuse_phone = (custom_data or {}).get("reuse_phone", "")
+                            reuse_provider = (custom_data or {}).get("reuse_provider", "5sim")
+                            reuse_order_id = (custom_data or {}).get("reuse_order_id", "")
+                            sms_provider = reuse_provider
+                            sms_order_id = reuse_order_id
+                            reg_data["phone"] = reuse_phone
+                            result["phone_used"] = reuse_phone
+                            logger.info(
+                                "Reusing rental #%s phone=%s for registration %d",
+                                reuse_rental_id, reuse_phone, registration_id,
+                            )
+                        else:
+                            try:
+                                num = await self.fivesim.rent_number(country=phone_country)
+                                sms_provider = "5sim"
+                            except Exception:
+                                num = await self.pvapins.rent_number(country=phone_country)
+                                sms_provider = "pvapins"
+                            sms_order_id = num.order_id
+                            reg_data["phone"] = num.phone_number
+                            result["phone_used"] = reg_data["phone"]
 
                     # 3) navigate to registration page
                     form_cfg = website_config.get("form_config", {})
@@ -284,7 +301,8 @@ class RegistrationBot:
             result["error_context"] = ctx.to_dict()
             logger.exception("Registration %d session error", registration_id)
         finally:
-            await self._cleanup_providers(inbox_id, sms_order_id, sms_provider, result)
+            reuse_rental_id = (custom_data or {}).get("reuse_rental_id") if custom_data else None
+            await self._cleanup_providers(inbox_id, sms_order_id, sms_provider, result, skip_sms_release=bool(reuse_rental_id))
 
         return result
 
@@ -492,6 +510,7 @@ class RegistrationBot:
         sms_order_id: str | None,
         sms_provider: str | None,
         result: dict,
+        skip_sms_release: bool = False,
     ) -> None:
         """Release provisioned email inboxes and phone numbers."""
         if inbox_id:
@@ -499,7 +518,7 @@ class RegistrationBot:
                 await self.mailslurp.delete_inbox(inbox_id)
             except Exception:
                 logger.debug("Failed to delete inbox %s", inbox_id)
-        if sms_order_id:
+        if sms_order_id and not skip_sms_release:
             try:
                 if sms_provider == "5sim":
                     if result.get("mobile_otp_verified"):
