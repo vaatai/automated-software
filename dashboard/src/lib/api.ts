@@ -101,7 +101,7 @@ export const rentals = {
     request<RentalListResponse>(`/api/rentals/${qs({ ...p })}`),
   active: (country?: string) =>
     request<RentalListResponse>(`/api/rentals/active${qs({ country })}`),
-  rent: (data: { country: string; label?: string }) =>
+  rent: (data: { country: string; label?: string; duration_hours?: number }) =>
     request<RentalItem>("/api/rentals/rent", { method: "POST", body: JSON.stringify(data) }),
   release: (id: number) =>
     request<RentalItem>(`/api/rentals/${id}/release`, { method: "POST" }),

@@ -17,6 +17,7 @@ router = APIRouter(prefix="/api/rentals", tags=["rentals"])
 class RentNumberRequest(BaseModel):
     country: str = Field(default="US", min_length=2, max_length=5)
     label: str | None = Field(default=None, max_length=255)
+    duration_hours: float = Field(default=24, gt=0, le=720)
 
 
 class RentalResponse(BaseModel):
@@ -71,7 +72,7 @@ async def list_rentals(
 async def rent_number(body: RentNumberRequest, db: AsyncSession = Depends(get_db)):
     svc = RentalService(db)
     try:
-        rental = await svc.rent_number(country=body.country, label=body.label)
+        rental = await svc.rent_number(country=body.country, label=body.label, duration_hours=body.duration_hours)
         return _to_response(rental)
     except Exception as exc:
         raise HTTPException(503, f"Failed to rent number: {exc}")
