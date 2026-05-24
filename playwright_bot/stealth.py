@@ -101,6 +101,64 @@ STEALTH_SCRIPTS: list[str] = [
         })
     });
     """,
+    # WebGL vendor/renderer spoofing (reCAPTCHA v3 fingerprints this)
+    """
+    const getParameter = WebGLRenderingContext.prototype.getParameter;
+    WebGLRenderingContext.prototype.getParameter = function(parameter) {
+        if (parameter === 37445) return 'Intel Inc.';
+        if (parameter === 37446) return 'Intel Iris OpenGL Engine';
+        return getParameter.call(this, parameter);
+    };
+    """,
+    # Canvas fingerprint noise
+    """
+    const origToDataURL = HTMLCanvasElement.prototype.toDataURL;
+    HTMLCanvasElement.prototype.toDataURL = function(type) {
+        if (type === 'image/png' || type === undefined) {
+            const ctx = this.getContext('2d');
+            if (ctx) {
+                const style = ctx.fillStyle;
+                ctx.fillStyle = 'rgba(255,255,255,0.01)';
+                ctx.fillRect(0, 0, 1, 1);
+                ctx.fillStyle = style;
+            }
+        }
+        return origToDataURL.apply(this, arguments);
+    };
+    """,
+    # Fake battery API
+    """
+    navigator.getBattery = () => Promise.resolve({
+        charging: true,
+        chargingTime: 0,
+        dischargingTime: Infinity,
+        level: 0.97,
+        addEventListener: () => {}
+    });
+    """,
+    # Override platform
+    """
+    Object.defineProperty(navigator, 'platform', {
+        get: () => 'Win32'
+    });
+    """,
+    # Media devices (microphone, camera existence)
+    """
+    if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+        const orig = navigator.mediaDevices.enumerateDevices.bind(navigator.mediaDevices);
+        navigator.mediaDevices.enumerateDevices = async () => {
+            const devices = await orig();
+            if (devices.length === 0) {
+                return [
+                    {deviceId: 'default', kind: 'audioinput', label: '', groupId: 'default'},
+                    {deviceId: 'default', kind: 'videoinput', label: '', groupId: 'default'},
+                    {deviceId: 'default', kind: 'audiooutput', label: '', groupId: 'default'},
+                ];
+            }
+            return devices;
+        };
+    }
+    """,
 ]
 
 

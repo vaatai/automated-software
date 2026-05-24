@@ -699,8 +699,13 @@ class RegistrationBot:
                 elif field_type == "radio":
                     await page.click(sel)  # type: ignore[union-attr]
                 else:
-                    await page.fill(sel, str(val))  # type: ignore[union-attr]
-                await page.wait_for_timeout(300)  # type: ignore[union-attr]
+                    # Click field first, then type with human-like delays
+                    await page.click(sel)  # type: ignore[union-attr]
+                    await page.wait_for_timeout(random.randint(100, 300))  # type: ignore[union-attr]
+                    await page.fill(sel, "")  # type: ignore[union-attr]
+                    await page.type(sel, str(val), delay=random.randint(30, 80))  # type: ignore[union-attr]
+                # Human-like pause between fields
+                await page.wait_for_timeout(random.randint(300, 800))  # type: ignore[union-attr]
                 logger.info("[reg-%d] Step %d: field '%s' filled OK", registration_id, step_idx, name)
             except Exception as exc:
                 logger.warning(
