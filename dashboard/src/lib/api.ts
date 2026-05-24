@@ -110,6 +110,37 @@ export const rentals = {
   get: (id: number) => request<RentalItem>(`/api/rentals/${id}`),
 };
 
+// ── Campaigns ─────────────────────────────────────────────
+export interface CampaignEntry {
+  website_id: number;
+  country: string;
+  count: number;
+  priority?: string;
+}
+export interface CampaignEntryResult {
+  website_id: number;
+  country: string;
+  count: number;
+  phone_number: string | null;
+  rental_id: number | null;
+  provider: string | null;
+  queued: number;
+  error: string | null;
+}
+export interface CampaignResponse {
+  total_entries: number;
+  total_queued: number;
+  total_failed: number;
+  numbers_rented: number;
+  numbers_reused: number;
+  results: CampaignEntryResult[];
+  created_at: string;
+}
+export const campaigns = {
+  launch: (data: { entries: CampaignEntry[]; duration_hours?: number }) =>
+    request<CampaignResponse>("/api/campaigns/launch", { method: "POST", body: JSON.stringify(data) }),
+};
+
 // ── Tasks ─────────────────────────────────────────────────
 export const tasks = {
   get: (id: string) => request<TaskDetail>(`/api/tasks/${id}`),

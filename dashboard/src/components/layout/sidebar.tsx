@@ -17,6 +17,7 @@ import {
   Phone,
   Play,
   Server,
+  Target,
   X,
 } from "lucide-react";
 import { AutoRegLogo } from "@/components/ui/logo";
@@ -28,6 +29,7 @@ const NAV_ITEMS = [
   { href: "/websites", label: "Websites", icon: Globe },
   { href: "/registrations", label: "Registrations", icon: Play },
   { href: "/rentals", label: "Rented Numbers", icon: Phone },
+  { href: "/campaigns", label: "Campaigns", icon: Target },
   { href: "/tasks", label: "Running Tasks", icon: Activity },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/otp", label: "OTP Tracking", icon: Mail },
