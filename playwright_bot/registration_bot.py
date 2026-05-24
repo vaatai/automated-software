@@ -35,18 +35,21 @@ NAVIGATION_TIMEOUT = 30_000
 ELEMENT_TIMEOUT = 10_000
 OTP_ELEMENT_TIMEOUT = 15_000
 
-# Cloudflare challenge indicators
-CLOUDFLARE_INDICATORS = [
-    "just a moment",
-    "checking your browser",
+# Cloudflare challenge-specific indicators (must match ≥2 to trigger)
+CLOUDFLARE_CHALLENGE_INDICATORS = [
     "cf-browser-verification",
     "cf_chl_opt",
     "challenge-platform",
-    "ray id",
     "_cf_chl",
-    "cloudflare",
     "please wait while we verify",
     "verify you are human",
+    "checking your browser",
+]
+
+# Title-only indicators (a single match in the page title is sufficient)
+CLOUDFLARE_TITLE_INDICATORS = [
+    "just a moment",
+    "attention required",
 ]
 
 
@@ -514,18 +517,27 @@ class RegistrationBot:
     # ── Cloudflare detection ───────────────────────────────
 
     async def _detect_cloudflare(self, page: object) -> bool:
-        """Detect Cloudflare challenge / interstitial pages."""
+        """Detect Cloudflare challenge / interstitial pages.
+
+        Uses two strategies to avoid false positives:
+        1. Title check — Cloudflare challenges set the title to 'Just a moment...'
+        2. HTML indicator count — requires ≥2 challenge-specific patterns
+        """
         try:
-            title = await page.title()  # type: ignore[union-attr]
-            html = await page.content()  # type: ignore[union-attr]
-            text = (title + " " + html).lower()
-            for indicator in CLOUDFLARE_INDICATORS:
-                if indicator in text:
-                    logger.warning(
-                        "Cloudflare indicator found: '%s' (title=%s)",
-                        indicator, title,
-                    )
+            title = (await page.title() or "").lower()  # type: ignore[union-attr]
+
+            # Strategy 1: title-only check (high confidence)
+            for indicator in CLOUDFLARE_TITLE_INDICATORS:
+                if indicator in title:
+                    logger.warning("Cloudflare title match: '%s' (title=%s)", indicator, title)
                     return True
+
+            # Strategy 2: require ≥2 challenge-specific patterns in HTML
+            html = (await page.content() or "").lower()  # type: ignore[union-attr]
+            matches = [ind for ind in CLOUDFLARE_CHALLENGE_INDICATORS if ind in html]
+            if len(matches) >= 2:
+                logger.warning("Cloudflare challenge detected (%d matches): %s", len(matches), matches)
+                return True
         except Exception:
             pass
         return False
