@@ -156,7 +156,7 @@ class SelectorChangeDetector:
                 results.append(result)
 
         # Check OTP selectors
-        otp_settings = form_config.get("otp_settings", {})
+        otp_settings = form_config.get("otp_settings") or {}
         for key in ("email_otp_field", "email_otp_submit", "phone_otp_field", "phone_otp_submit"):
             field_cfg = otp_settings.get(key, {})
             if isinstance(field_cfg, dict) and field_cfg.get("selector"):
@@ -164,7 +164,7 @@ class SelectorChangeDetector:
                 results.append(result)
 
         # Check success indicator
-        success = form_config.get("success_indicator", {})
+        success = form_config.get("success_indicator") or {}
         if success and success.get("selector"):
             result = await self._check_single_selector(
                 page, success["selector"], "success_indicator"
