@@ -1128,11 +1128,26 @@ class RegistrationBot:
                 elif field_type == "radio":
                     await page.click(sel)  # type: ignore[union-attr]
                 else:
-                    # Click field first, then type with human-like delays
+                    # Use page.fill() for React compatibility, then dispatch events
                     await page.click(sel)  # type: ignore[union-attr]
                     await page.wait_for_timeout(random.randint(100, 300))  # type: ignore[union-attr]
-                    await page.fill(sel, "")  # type: ignore[union-attr]
-                    await page.type(sel, str(val), delay=random.randint(30, 80))  # type: ignore[union-attr]
+                    await page.fill(sel, str(val))  # type: ignore[union-attr]
+                    await page.wait_for_timeout(random.randint(200, 500))  # type: ignore[union-attr]
+                    # Dispatch events to trigger React/Vue state updates
+                    await page.evaluate(  # type: ignore[union-attr]
+                        """(s) => {
+                            let el = document.querySelector(s);
+                            if (el) {
+                                let nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+                                    window.HTMLInputElement.prototype, 'value'
+                                ).set;
+                                nativeInputValueSetter.call(el, el.value);
+                                el.dispatchEvent(new Event('input', {bubbles: true}));
+                                el.dispatchEvent(new Event('change', {bubbles: true}));
+                            }
+                        }""",
+                        sel,
+                    )
                 # Human-like pause between fields
                 await page.wait_for_timeout(random.randint(300, 800))  # type: ignore[union-attr]
                 logger.info("[reg-%d] Step %d: field '%s' filled OK", registration_id, step_idx, name)
@@ -1149,6 +1164,17 @@ class RegistrationBot:
                 registration_id, step_idx, submit["selector"],
             )
             try:
+                # Wait for button to be enabled (up to 10s)
+                try:
+                    await page.wait_for_selector(  # type: ignore[union-attr]
+                        f"{submit['selector']}:not([disabled])",
+                        timeout=10_000,
+                    )
+                except Exception:
+                    logger.warning(
+                        "[reg-%d] Step %d: submit button still disabled, clicking anyway",
+                        registration_id, step_idx,
+                    )
                 await page.click(submit["selector"])  # type: ignore[union-attr]
                 wait_ms = step.get("wait_after_submit_ms", 3000)
                 await page.wait_for_timeout(wait_ms)  # type: ignore[union-attr]
