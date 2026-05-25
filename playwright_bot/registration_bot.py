@@ -1128,26 +1128,9 @@ class RegistrationBot:
                 elif field_type == "radio":
                     await page.click(sel)  # type: ignore[union-attr]
                 else:
-                    # Use page.fill() for React compatibility, then dispatch events
                     await page.click(sel)  # type: ignore[union-attr]
                     await page.wait_for_timeout(random.randint(100, 300))  # type: ignore[union-attr]
                     await page.fill(sel, str(val))  # type: ignore[union-attr]
-                    await page.wait_for_timeout(random.randint(200, 500))  # type: ignore[union-attr]
-                    # Dispatch events to trigger React/Vue state updates
-                    await page.evaluate(  # type: ignore[union-attr]
-                        """(s) => {
-                            let el = document.querySelector(s);
-                            if (el) {
-                                let nativeInputValueSetter = Object.getOwnPropertyDescriptor(
-                                    window.HTMLInputElement.prototype, 'value'
-                                ).set;
-                                nativeInputValueSetter.call(el, el.value);
-                                el.dispatchEvent(new Event('input', {bubbles: true}));
-                                el.dispatchEvent(new Event('change', {bubbles: true}));
-                            }
-                        }""",
-                        sel,
-                    )
                 # Human-like pause between fields
                 await page.wait_for_timeout(random.randint(300, 800))  # type: ignore[union-attr]
                 logger.info("[reg-%d] Step %d: field '%s' filled OK", registration_id, step_idx, name)
@@ -1159,23 +1142,32 @@ class RegistrationBot:
 
         submit = step.get("submit_button", {})
         if submit and submit.get("selector"):
+            submit_sel = submit["selector"]
             logger.info(
                 "[reg-%d] Step %d: clicking submit (selector=%s)",
-                registration_id, step_idx, submit["selector"],
+                registration_id, step_idx, submit_sel,
             )
             try:
-                # Wait for button to be enabled (up to 10s)
+                locator = page.locator(submit_sel).first  # type: ignore[union-attr]
+                # Wait up to 15s for the button to be enabled
                 try:
-                    await page.wait_for_selector(  # type: ignore[union-attr]
-                        f"{submit['selector']}:not([disabled])",
-                        timeout=10_000,
-                    )
+                    await locator.wait_for(state="visible", timeout=15_000)
+                    enabled = await locator.is_enabled()
+                    if not enabled:
+                        logger.info(
+                            "[reg-%d] Step %d: submit disabled, waiting for enabled...",
+                            registration_id, step_idx,
+                        )
+                        for _ in range(30):
+                            await page.wait_for_timeout(500)  # type: ignore[union-attr]
+                            if await locator.is_enabled():
+                                break
                 except Exception:
                     logger.warning(
-                        "[reg-%d] Step %d: submit button still disabled, clicking anyway",
+                        "[reg-%d] Step %d: submit button check failed, clicking anyway",
                         registration_id, step_idx,
                     )
-                await page.click(submit["selector"])  # type: ignore[union-attr]
+                await locator.click(timeout=30_000)
                 wait_ms = step.get("wait_after_submit_ms", 3000)
                 await page.wait_for_timeout(wait_ms)  # type: ignore[union-attr]
                 logger.info(
@@ -1185,7 +1177,7 @@ class RegistrationBot:
             except Exception as exc:
                 logger.error(
                     "[reg-%d] Step %d: submit click failed (selector=%s): %s",
-                    registration_id, step_idx, submit["selector"], exc,
+                    registration_id, step_idx, submit_sel, exc,
                 )
                 raise
         else:
