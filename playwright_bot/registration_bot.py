@@ -464,6 +464,15 @@ class RegistrationBot:
                                     "[reg-%d] Step %d post-check: CAPTCHA on page but CapSolver available — continuing",
                                     registration_id, step_idx + 1,
                                 )
+                                if not captcha_type or not captcha_sitekey:
+                                    detected = await self._detect_captcha_from_page(page, registration_id)
+                                    if detected:
+                                        captcha_type = detected["type"]
+                                        captcha_sitekey = detected["sitekey"]
+                                        logger.info(
+                                            "[reg-%d] Post-step CAPTCHA re-detected: type=%s key=%s",
+                                            registration_id, captcha_type, captcha_sitekey[:20],
+                                        )
                             else:
                                 logger.warning(
                                     "[reg-%d] Step %d post-check failed: %s",
