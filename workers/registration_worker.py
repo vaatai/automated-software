@@ -196,7 +196,7 @@ def _do_registration(
             "registration_url=%s, success_indicator=%s",
             registration_id, len(steps), total_fields,
             form_cfg.get("registration_url", "not set"),
-            bool(form_cfg.get("success_indicator", {}).get("selector")),
+            bool((form_cfg.get("success_indicator") or {}).get("selector")),
         )
         if total_fields == 0:
             logger.warning(
