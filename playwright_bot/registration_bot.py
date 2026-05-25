@@ -459,14 +459,29 @@ class RegistrationBot:
                             session, step=f"step_{step_idx}_submit"
                         )
                         if step_check is not None:
-                            logger.warning(
-                                "[reg-%d] Step %d post-check failed: %s",
-                                registration_id, step_idx + 1, step_check.error_message,
-                            )
-                            result["error"] = step_check.error_message
-                            result["error_context"] = step_check.to_dict()
-                            result["screenshot"] = step_check.screenshot_path
-                            return result
+                            if step_check.captcha_detected and self._capsolver:
+                                logger.info(
+                                    "[reg-%d] Step %d post-check: CAPTCHA on page but CapSolver available — continuing",
+                                    registration_id, step_idx + 1,
+                                )
+                                if not captcha_type or not captcha_sitekey:
+                                    detected = await self._detect_captcha_from_page(page, registration_id)
+                                    if detected:
+                                        captcha_type = detected["type"]
+                                        captcha_sitekey = detected["sitekey"]
+                                        logger.info(
+                                            "[reg-%d] Post-step CAPTCHA re-detected: type=%s key=%s",
+                                            registration_id, captcha_type, captcha_sitekey[:20],
+                                        )
+                            else:
+                                logger.warning(
+                                    "[reg-%d] Step %d post-check failed: %s",
+                                    registration_id, step_idx + 1, step_check.error_message,
+                                )
+                                result["error"] = step_check.error_message
+                                result["error_context"] = step_check.to_dict()
+                                result["screenshot"] = step_check.screenshot_path
+                                return result
                         result["steps_completed"].append(f"step_{step_idx}_{step_name}")
 
                     # ── Step 4b: Post-submit CAPTCHA solving ──
