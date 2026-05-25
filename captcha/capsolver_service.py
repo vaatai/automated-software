@@ -4,6 +4,7 @@ Supports:
   - reCAPTCHA v2 (checkbox / invisible)
   - reCAPTCHA v3 (score-based)
   - hCaptcha
+  - Cloudflare Turnstile
 """
 
 import logging
@@ -79,6 +80,21 @@ class CapsolverService:
                 "websiteKey": website_key,
             },
             token_key="gRecaptchaResponse",
+        )
+
+    def solve_turnstile(
+        self,
+        website_url: str,
+        website_key: str,
+    ) -> str | None:
+        """Solve Cloudflare Turnstile and return the token."""
+        return self._solve(
+            task_type="AntiTurnstileTaskProxyLess",
+            extra={
+                "websiteURL": website_url,
+                "websiteKey": website_key,
+            },
+            token_key="token",
         )
 
     # ── internal ───────────────────────────────────────────

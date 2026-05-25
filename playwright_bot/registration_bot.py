@@ -427,6 +427,23 @@ class RegistrationBot:
                             else:
                                 logger.warning("[reg-%d] reCAPTCHA v3 solve failed", registration_id)
 
+                        elif captcha_type == "turnstile":
+                            logger.info(
+                                "[reg-%d] Pre-solving Cloudflare Turnstile (key=%s)...",
+                                registration_id, captcha_sitekey[:20],
+                            )
+                            token = await asyncio.to_thread(
+                                self._capsolver.solve_turnstile,
+                                website_url=url,
+                                website_key=captcha_sitekey,
+                            )
+                            if token:
+                                await self._inject_turnstile_token(page, token, registration_id)
+                                captcha_solved = True
+                                result["steps_completed"].append("captcha_solved_turnstile")
+                            else:
+                                logger.warning("[reg-%d] Turnstile solve failed", registration_id)
+
                     # ── Step 4: Fill fields + submit ──
                     steps = form_cfg.get("steps", [])
                     if not steps:
@@ -448,6 +465,57 @@ class RegistrationBot:
 
                         # Screenshot after step
                         await session.screenshot(f"after_step_{step_idx}")
+
+                        # ── Inline Email OTP (within form, before final submit) ──
+                        inline_email = step.get("inline_email_otp")
+                        if inline_email and inbox_id:
+                            logger.info("[reg-%d] Step %d: inline email OTP — waiting for code...", registration_id, step_idx)
+                            otp = await self._get_email_otp_with_tracking(inbox_id, error_handler)
+                            if otp:
+                                logger.info("[reg-%d] Step %d: inline email OTP received: %s", registration_id, step_idx, otp)
+                                otp_field_sel = inline_email.get("otp_field", "")
+                                if otp_field_sel:
+                                    await page.wait_for_selector(otp_field_sel, timeout=ELEMENT_TIMEOUT)  # type: ignore[union-attr]
+                                    await page.fill(otp_field_sel, otp)  # type: ignore[union-attr]
+                                verify_btn_sel = inline_email.get("verify_button", "")
+                                if verify_btn_sel:
+                                    await page.click(verify_btn_sel)  # type: ignore[union-attr]
+                                    await page.wait_for_timeout(3000)  # type: ignore[union-attr]
+                                result["email_otp_verified"] = True
+                                result["steps_completed"].append("inline_email_otp_verified")
+                                await session.screenshot(f"after_inline_email_otp_{step_idx}")
+                            else:
+                                logger.warning("[reg-%d] Step %d: inline email OTP timed out", registration_id, step_idx)
+                                result["error"] = "Inline email OTP not received within timeout"
+                                return result
+
+                        # ── Inline Phone OTP (within form, before final submit) ──
+                        inline_phone = step.get("inline_phone_otp")
+                        if inline_phone and sms_order_id:
+                            logger.info("[reg-%d] Step %d: inline phone OTP — waiting for code...", registration_id, step_idx)
+                            sms_skip_count = int((custom_data or {}).get("reuse_otp_count", 0) or 0)
+                            sms_known_otp = (custom_data or {}).get("reuse_last_otp") or None
+                            otp = await self._get_sms_otp_with_tracking(
+                                sms_provider, sms_order_id, error_handler,
+                                skip_count=sms_skip_count, known_otp=sms_known_otp,
+                            )
+                            if otp:
+                                logger.info("[reg-%d] Step %d: inline phone OTP received: %s", registration_id, step_idx, otp)
+                                otp_field_sel = inline_phone.get("otp_field", "")
+                                if otp_field_sel:
+                                    await page.wait_for_selector(otp_field_sel, timeout=ELEMENT_TIMEOUT)  # type: ignore[union-attr]
+                                    await page.fill(otp_field_sel, otp)  # type: ignore[union-attr]
+                                verify_btn_sel = inline_phone.get("verify_button", "")
+                                if verify_btn_sel:
+                                    await page.click(verify_btn_sel)  # type: ignore[union-attr]
+                                    await page.wait_for_timeout(3000)  # type: ignore[union-attr]
+                                result["mobile_otp_verified"] = True
+                                result["steps_completed"].append("inline_phone_otp_verified")
+                                await session.screenshot(f"after_inline_phone_otp_{step_idx}")
+                            else:
+                                logger.warning("[reg-%d] Step %d: inline phone OTP timed out", registration_id, step_idx)
+                                result["error"] = "Inline phone OTP not received within timeout"
+                                return result
 
                         logger.info(
                             "[reg-%d] Step %d completed, current URL: %s",
@@ -542,6 +610,23 @@ class RegistrationBot:
                                 result["steps_completed"].append("captcha_solved_v3")
                             else:
                                 logger.warning("[reg-%d] reCAPTCHA v3 solve failed", registration_id)
+
+                        elif captcha_type == "turnstile":
+                            logger.info(
+                                "[reg-%d] Solving Turnstile post-submit (key=%s)...",
+                                registration_id, captcha_sitekey[:20],
+                            )
+                            token = await asyncio.to_thread(
+                                self._capsolver.solve_turnstile,
+                                website_url=url,
+                                website_key=captcha_sitekey,
+                            )
+                            if token:
+                                await self._inject_turnstile_token(page, token, registration_id)
+                                captcha_solved = True
+                                result["steps_completed"].append("captcha_solved_turnstile")
+                            else:
+                                logger.warning("[reg-%d] Turnstile solve failed", registration_id)
 
                         if captcha_solved:
                             logger.info("[reg-%d] CAPTCHA solved, re-submitting form...", registration_id)
@@ -836,6 +921,32 @@ class RegistrationBot:
                     return {type: 'hcaptcha', sitekey: el.getAttribute('data-sitekey')};
                 }
 
+                // Cloudflare Turnstile
+                let ts = document.querySelector('.cf-turnstile[data-sitekey]');
+                if (ts) return {type: 'turnstile', sitekey: ts.getAttribute('data-sitekey')};
+                // Turnstile from hidden input — find sitekey from iframe URL
+                let tsInput = document.querySelector('input[name="cf-turnstile-response"]');
+                if (tsInput) {
+                    let sk = null;
+                    // Check parent div for data-sitekey
+                    let parent = tsInput.closest('.cf-turnstile') || tsInput.parentElement;
+                    if (parent) sk = parent.getAttribute('data-sitekey');
+                    // Extract from Cloudflare challenge iframe URL
+                    if (!sk) {
+                        let tsIframe = document.querySelector('iframe[src*="challenges.cloudflare.com"]');
+                        if (tsIframe) {
+                            let parts = tsIframe.src.split('/');
+                            for (let p of parts) {
+                                if (p.startsWith('0x')) {
+                                    sk = p.split('?')[0];
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (sk) return {type: 'turnstile', sitekey: sk};
+                }
+
                 return null;
             }""")
             if result:
@@ -913,6 +1024,34 @@ class RegistrationBot:
         )
         logger.info("[reg-%d] hCaptcha token injected", reg_id)
 
+    async def _inject_turnstile_token(self, page, token: str, reg_id: int) -> None:
+        """Inject a solved Cloudflare Turnstile token into the page."""
+        logger.info("[reg-%d] Injecting Turnstile token (%d chars)", reg_id, len(token))
+        await page.evaluate(
+            """(token) => {
+                // Set the cf-turnstile-response hidden input(s)
+                document.querySelectorAll('input[name="cf-turnstile-response"]')
+                    .forEach(el => { el.value = token; });
+                // Call turnstile callback if available
+                if (window.turnstile) {
+                    try {
+                        let widgets = document.querySelectorAll('.cf-turnstile');
+                        widgets.forEach(w => {
+                            let wid = w.getAttribute('data-widget-id');
+                            if (wid) {
+                                try { window.turnstile.getResponse(wid); } catch(e) {}
+                            }
+                        });
+                    } catch(e) {}
+                }
+                // Dispatch change event on the hidden input
+                document.querySelectorAll('input[name="cf-turnstile-response"]')
+                    .forEach(el => { el.dispatchEvent(new Event('change', {bubbles: true})); });
+            }""",
+            token,
+        )
+        logger.info("[reg-%d] Turnstile token injected", reg_id)
+
     # ── step execution ─────────────────────────────────────
 
     async def _execute_step(
@@ -968,6 +1107,12 @@ class RegistrationBot:
             if not val:
                 logger.warning("[reg-%d] Step %d field '%s': no value available", registration_id, step_idx, name)
                 continue
+            # Strip country code from phone numbers when configured
+            if cfg.get("strip_country_code") and val:
+                val = str(val).lstrip("+")
+                country_code = cfg.get("country_code", "91")
+                if val.startswith(country_code):
+                    val = val[len(country_code):]
             try:
                 logger.info(
                     "[reg-%d] Step %d: filling field '%s' (selector=%s, value=%s)",
