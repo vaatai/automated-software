@@ -12,6 +12,7 @@ Integrates centralized error handling for:
   - Playwright tracing support
 """
 
+import asyncio
 import logging
 import random
 import string
@@ -66,7 +67,7 @@ class RegistrationBot:
     Supports the nested ``FormConfig`` schema:
         form_config.steps[]        — multi-step form filling
         form_config.otp_settings   — OTP field selectors
-        form_config.captcha_settings (not yet automated)
+        form_config.captcha_settings — CAPTCHA solving via CapSolver
         form_config.success_indicator
 
     Error handling:
@@ -404,8 +405,9 @@ class RegistrationBot:
                                 "[reg-%d] Pre-solving reCAPTCHA v3 (key=%s)...",
                                 registration_id, captcha_sitekey[:20],
                             )
-                            token = self._capsolver.solve_recaptcha_v3(
-                                website_url=reg_url,
+                            token = await asyncio.to_thread(
+                                self._capsolver.solve_recaptcha_v3,
+                                website_url=url,
                                 website_key=captcha_sitekey,
                                 page_action=captcha_cfg.get("action", "register"),
                                 min_score=captcha_cfg.get("min_score", 0.7),
@@ -469,8 +471,9 @@ class RegistrationBot:
                                 "[reg-%d] Solving hCaptcha (key=%s)...",
                                 registration_id, captcha_sitekey[:20],
                             )
-                            token = self._capsolver.solve_hcaptcha(
-                                website_url=reg_url,
+                            token = await asyncio.to_thread(
+                                self._capsolver.solve_hcaptcha,
+                                website_url=url,
                                 website_key=captcha_sitekey,
                             )
                             if token:
@@ -486,8 +489,9 @@ class RegistrationBot:
                                 "[reg-%d] Solving reCAPTCHA v2 (key=%s, invisible=%s)...",
                                 registration_id, captcha_sitekey[:20], is_invisible,
                             )
-                            token = self._capsolver.solve_recaptcha_v2(
-                                website_url=reg_url,
+                            token = await asyncio.to_thread(
+                                self._capsolver.solve_recaptcha_v2,
+                                website_url=url,
                                 website_key=captcha_sitekey,
                                 is_invisible=is_invisible,
                             )
@@ -503,8 +507,9 @@ class RegistrationBot:
                                 "[reg-%d] Solving reCAPTCHA v3 post-submit (key=%s)...",
                                 registration_id, captcha_sitekey[:20],
                             )
-                            token = self._capsolver.solve_recaptcha_v3(
-                                website_url=reg_url,
+                            token = await asyncio.to_thread(
+                                self._capsolver.solve_recaptcha_v3,
+                                website_url=url,
                                 website_key=captcha_sitekey,
                                 page_action=captcha_cfg.get("action", "register"),
                             )
