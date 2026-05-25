@@ -459,14 +459,20 @@ class RegistrationBot:
                             session, step=f"step_{step_idx}_submit"
                         )
                         if step_check is not None:
-                            logger.warning(
-                                "[reg-%d] Step %d post-check failed: %s",
-                                registration_id, step_idx + 1, step_check.error_message,
-                            )
-                            result["error"] = step_check.error_message
-                            result["error_context"] = step_check.to_dict()
-                            result["screenshot"] = step_check.screenshot_path
-                            return result
+                            if step_check.captcha_detected and self._capsolver:
+                                logger.info(
+                                    "[reg-%d] Step %d post-check: CAPTCHA on page but CapSolver available — continuing",
+                                    registration_id, step_idx + 1,
+                                )
+                            else:
+                                logger.warning(
+                                    "[reg-%d] Step %d post-check failed: %s",
+                                    registration_id, step_idx + 1, step_check.error_message,
+                                )
+                                result["error"] = step_check.error_message
+                                result["error_context"] = step_check.to_dict()
+                                result["screenshot"] = step_check.screenshot_path
+                                return result
                         result["steps_completed"].append(f"step_{step_idx}_{step_name}")
 
                     # ── Step 4b: Post-submit CAPTCHA solving ──
