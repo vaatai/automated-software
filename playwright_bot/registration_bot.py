@@ -1111,7 +1111,7 @@ class RegistrationBot:
             # Strip country code from phone numbers when configured
             if cfg.get("strip_country_code") and val:
                 val = str(val).lstrip("+")
-                country_code = cfg.get("country_code", "91")
+                country_code = cfg.get("country_code") or "91"
                 if val.startswith(country_code):
                     val = val[len(country_code):]
             try:
