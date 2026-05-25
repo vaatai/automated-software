@@ -26,6 +26,7 @@ from playwright.async_api import (
     async_playwright,
 )
 
+from configs.settings import settings
 from playwright_bot.stealth import (
     get_stealth_scripts,
     random_locale,
@@ -246,6 +247,8 @@ class BrowserManager:
         self._pw: Playwright | None = None
         self._browser: Browser | None = None
         self._active_sessions: dict[str, BrowserSession] = {}
+        self._is_remote: bool = False
+        self._bright_data_wss: str = ""
 
     @property
     def active_count(self) -> int:
@@ -254,10 +257,25 @@ class BrowserManager:
     # ── lifecycle ──────────────────────────────────────────
 
     async def start(self) -> None:
-        """Launch the shared Chromium browser instance."""
-        if self._browser:
+        """Launch a local Chromium or prepare for Bright Data Scraping Browser."""
+        if self._browser or self._is_remote:
             return
         self._pw = await async_playwright().start()
+
+        bright_data_wss = settings.BRIGHT_DATA_BROWSER_WSS
+        if bright_data_wss:
+            self._bright_data_wss = bright_data_wss
+            self._is_remote = True
+            logger.info(
+                "BrowserManager configured for Bright Data Scraping Browser "
+                "(fresh connection per session)"
+            )
+        else:
+            self._bright_data_wss = ""
+            await self._launch_local()
+
+    async def _launch_local(self) -> None:
+        """Launch a local Chromium browser instance."""
         launch_kwargs: dict = {
             "headless": self._headless,
             "args": [
@@ -288,13 +306,13 @@ class BrowserManager:
             self._browser = await self._pw.chromium.launch(**launch_kwargs)
         except Exception as exc:
             logger.error("Browser launch failed: %s", exc)
-            # Retry once without --single-process (some environments don't support it)
             launch_kwargs["args"] = [
                 a for a in launch_kwargs["args"] if a != "--single-process"
             ]
             self._browser = await self._pw.chromium.launch(**launch_kwargs)
+        self._is_remote = False
         logger.info(
-            "BrowserManager started (max_contexts=%d, headless=%s)",
+            "BrowserManager started locally (max_contexts=%d, headless=%s)",
             self._max_contexts,
             self._headless,
         )
@@ -302,7 +320,14 @@ class BrowserManager:
     async def stop(self) -> None:
         """Close all sessions and the shared browser."""
         for session in list(self._active_sessions.values()):
-            await session.close()
+            remote_browser = getattr(session, "_remote_browser", None)
+            if remote_browser:
+                try:
+                    await remote_browser.close()
+                except Exception:
+                    logger.debug("Remote browser close failed for %s", session.session_id)
+            else:
+                await session.close()
         self._active_sessions.clear()
         if self._browser:
             await self._browser.close()
@@ -324,10 +349,42 @@ class BrowserManager:
         timezone_id: str | None = None,
     ) -> BrowserSession:
         """Create an isolated browser context with stealth and fingerprint randomization."""
-        if not self._browser:
+        if not self._browser and not self._is_remote:
             msg = "BrowserManager not started — call start() first"
             raise RuntimeError(msg)
 
+        if self._is_remote:
+            return await self._create_remote_session(session_id)
+        return await self._create_local_session(
+            session_id, proxy, user_agent, viewport, locale, timezone_id,
+        )
+
+    async def _create_remote_session(self, session_id: str) -> BrowserSession:
+        """Connect to Bright Data and use its default context (fresh IP per connection)."""
+        logger.info("Session %s: connecting to Bright Data Scraping Browser...", session_id)
+        browser = await self._pw.chromium.connect_over_cdp(self._bright_data_wss)
+        context = browser.contexts[0]
+        context.set_default_timeout(self._default_timeout_ms)
+        context.set_default_navigation_timeout(self._navigation_timeout_ms)
+
+        page = context.pages[0] if context.pages else await context.new_page()
+        session = BrowserSession(context=context, page=page, session_id=session_id)
+        session._remote_browser = browser  # track for cleanup
+        self._active_sessions[session_id] = session
+
+        logger.info("Session %s created (remote Bright Data browser)", session_id)
+        return session
+
+    async def _create_local_session(
+        self,
+        session_id: str,
+        proxy: dict | None = None,
+        user_agent: str | None = None,
+        viewport: dict[str, int] | None = None,
+        locale: str | None = None,
+        timezone_id: str | None = None,
+    ) -> BrowserSession:
+        """Create a local browser context with stealth and fingerprint randomization."""
         ua = user_agent or random_user_agent()
         vp = viewport or random_viewport()
         loc = locale or random_locale()
@@ -374,7 +431,15 @@ class BrowserManager:
         session = self._active_sessions.pop(session_id, None)
         if session:
             session.save_logs()
-            await session.close()
+            # For remote sessions, disconnect the per-session browser
+            remote_browser = getattr(session, "_remote_browser", None)
+            if remote_browser:
+                try:
+                    await remote_browser.close()
+                except Exception:
+                    logger.debug("Remote browser close failed for %s", session_id)
+            else:
+                await session.close()
             logger.debug("Session %s released", session_id)
 
     class _SessionContextManager:

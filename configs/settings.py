@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     # --- CAPTCHA Solving (CapSolver) ---
     CAPSOLVER_API_KEY: str = ""
 
+    # --- Bright Data Scraping Browser ---
+    BRIGHT_DATA_BROWSER_WSS: str = ""
+
     # --- Proxy Management ---
     PROXY_URL: str = ""
     PROXY_BAN_THRESHOLD: int = 5
