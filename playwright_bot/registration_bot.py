@@ -332,15 +332,23 @@ class RegistrationBot:
                     # ── Step 3b: Check for CAPTCHA / proxy ban ──
                     page_check = await self._check_page_after_navigation(session, error_handler)
                     if page_check is not None:
-                        logger.warning(
-                            "[reg-%d] Page check failed: %s",
-                            registration_id, page_check.error_message,
-                        )
-                        result["error"] = page_check.error_message
-                        result["error_context"] = page_check.to_dict()
-                        result["screenshot"] = page_check.screenshot_path
-                        result["html_snapshot"] = page_check.html_snapshot_path
-                        return result
+                        # If CAPTCHA detected but we have CapSolver, continue to solve it
+                        if page_check.captcha_detected and self._capsolver:
+                            logger.info(
+                                "[reg-%d] CAPTCHA detected (%s) but CapSolver available — continuing",
+                                registration_id, page_check.captcha_type,
+                            )
+                            result["steps_completed"].append("captcha_detected_will_solve")
+                        else:
+                            logger.warning(
+                                "[reg-%d] Page check failed: %s",
+                                registration_id, page_check.error_message,
+                            )
+                            result["error"] = page_check.error_message
+                            result["error_context"] = page_check.to_dict()
+                            result["screenshot"] = page_check.screenshot_path
+                            result["html_snapshot"] = page_check.html_snapshot_path
+                            return result
                     result["steps_completed"].append("page_checks_passed")
 
                     # ── Step 3c: Validate selectors ──
