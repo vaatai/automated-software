@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     MAILSLURP_WEBHOOK_URL: str = ""
     MAILSLURP_INBOX_EXPIRY_MS: int = 600_000
 
+    # --- CAPTCHA Solving (CapSolver) ---
+    CAPSOLVER_API_KEY: str = ""
+
     # --- Proxy Management ---
     PROXY_URL: str = ""
     PROXY_BAN_THRESHOLD: int = 5
