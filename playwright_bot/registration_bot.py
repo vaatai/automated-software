@@ -36,7 +36,7 @@ from utils.failure_detectors import (
 logger = logging.getLogger(__name__)
 
 # Default timeouts (ms)
-NAVIGATION_TIMEOUT = 30_000
+NAVIGATION_TIMEOUT = 60_000
 ELEMENT_TIMEOUT = 10_000
 OTP_ELEMENT_TIMEOUT = 15_000
 
