@@ -258,7 +258,7 @@ class BrowserManager:
 
     async def start(self) -> None:
         """Launch a local Chromium or prepare for Bright Data Scraping Browser."""
-        if self._browser:
+        if self._browser or self._is_remote:
             return
         self._pw = await async_playwright().start()
 
@@ -320,7 +320,14 @@ class BrowserManager:
     async def stop(self) -> None:
         """Close all sessions and the shared browser."""
         for session in list(self._active_sessions.values()):
-            await session.close()
+            remote_browser = getattr(session, "_remote_browser", None)
+            if remote_browser:
+                try:
+                    await remote_browser.close()
+                except Exception:
+                    logger.debug("Remote browser close failed for %s", session.session_id)
+            else:
+                await session.close()
         self._active_sessions.clear()
         if self._browser:
             await self._browser.close()
