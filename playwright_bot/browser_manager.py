@@ -342,7 +342,7 @@ class BrowserManager:
         timezone_id: str | None = None,
     ) -> BrowserSession:
         """Create an isolated browser context with stealth and fingerprint randomization."""
-        if not self._browser:
+        if not self._browser and not self._is_remote:
             msg = "BrowserManager not started — call start() first"
             raise RuntimeError(msg)
 
