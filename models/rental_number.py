@@ -31,6 +31,7 @@ class RentalStatus(str, enum.Enum):
 class RentalProvider(str, enum.Enum):
     FIVESIM = "5sim"
     PVAPINS = "pvapins"
+    SMSACTIVATE = "sms-activate"
 
 
 class RentalNumber(Base):

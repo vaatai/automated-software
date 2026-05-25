@@ -15,6 +15,7 @@ from models.rental_number import (
 from otp.fivesim_service import FiveSimService
 from otp.pvapins_service import PVAPinsService
 from otp.sms_provider import NumberUnavailableError
+from otp.smsactivate_service import SMSActivateService
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,7 @@ class RentalService:
         self.db = db
         self.fivesim = FiveSimService()
         self.pvapins = PVAPinsService()
+        self.smsactivate = SMSActivateService()
 
     async def list_active(self, country: str | None = None) -> list[RentalNumber]:
         """List all active (non-expired) rental numbers."""
@@ -85,20 +87,32 @@ class RentalService:
     ) -> RentalNumber:
         """Rent a new phone number for the specified duration.
 
-        Tries 5SIM first, falls back to PVAPins.
+        Tries 5SIM → PVAPins → SMS-Activate in order.
         """
         rental_result = None
         provider_name = None
+        errors: list[str] = []
 
-        try:
-            rental_result = await self.fivesim.rent_number(country=country)
-            provider_name = "5sim"
-        except Exception:
+        providers = [
+            ("5sim", self.fivesim),
+            ("pvapins", self.pvapins),
+            ("sms-activate", self.smsactivate),
+        ]
+        for name, provider in providers:
             try:
-                rental_result = await self.pvapins.rent_number(country=country)
-                provider_name = "pvapins"
+                rental_result = await provider.rent_number(country=country)
+                provider_name = name
+                break
             except Exception as exc:
-                raise NumberUnavailableError("all_providers", country, "any") from exc
+                reason = str(exc)
+                errors.append(f"{name}: {reason}")
+                logger.warning("Provider %s failed for country=%s: %s", name, country, reason)
+
+        if rental_result is None or provider_name is None:
+            detail = "; ".join(errors) if errors else "unknown"
+            raise NumberUnavailableError(
+                "all_providers", country, f"any ({detail})"
+            )
 
         now = datetime.now(timezone.utc)
         rental = RentalNumber(
@@ -153,8 +167,10 @@ class RentalService:
         try:
             if rental.provider == RentalProvider.FIVESIM:
                 await self.fivesim.release_number(rental.order_id, success=True)
-            else:
+            elif rental.provider == RentalProvider.PVAPINS:
                 await self.pvapins.release_number(rental.order_id, success=True)
+            elif rental.provider == RentalProvider.SMSACTIVATE:
+                await self.smsactivate.release_number(rental.order_id, success=True)
         except Exception as exc:
             logger.warning("Failed to release from provider: %s", exc)
 

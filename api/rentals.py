@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from configs.database import get_db
+from otp.sms_provider import NumberUnavailableError
 from services.rental_service import RentalService
 
 router = APIRouter(prefix="/api/rentals", tags=["rentals"])
@@ -74,6 +75,8 @@ async def rent_number(body: RentNumberRequest, db: AsyncSession = Depends(get_db
     try:
         rental = await svc.rent_number(country=body.country, label=body.label, duration_hours=body.duration_hours)
         return _to_response(rental)
+    except NumberUnavailableError as exc:
+        raise HTTPException(503, f"No numbers available for country={body.country}. Provider details: {exc}")
     except Exception as exc:
         raise HTTPException(503, f"Failed to rent number: {exc}")
 
@@ -121,6 +124,24 @@ async def record_otp(
     if not rental:
         raise HTTPException(404, "Rental not found")
     return _to_response(rental)
+
+
+@router.get("/providers/status")
+async def check_provider_status():
+    """Check balance/availability for all SMS providers."""
+    from otp.fivesim_service import FiveSimService
+    from otp.pvapins_service import PVAPinsService
+    from otp.smsactivate_service import SMSActivateService
+
+    results = {}
+    for name, svc in [("5sim", FiveSimService()), ("pvapins", PVAPinsService()), ("sms-activate", SMSActivateService())]:
+        try:
+            status = await svc.get_status()
+            balance = await svc.check_balance() if hasattr(svc, "check_balance") else None
+            results[name] = {"status": status.value, "balance": balance}
+        except Exception as exc:
+            results[name] = {"status": "error", "error": str(exc)}
+    return results
 
 
 @router.post("/expire")
