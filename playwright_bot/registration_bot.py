@@ -1097,6 +1097,7 @@ class RegistrationBot:
             "mail": "email",
         }
 
+        fields_filled = 0
         for name, cfg in fields.items():
             sel = cfg.get("selector", "")
             resolved_key = field_aliases.get(name, name)
@@ -1133,6 +1134,7 @@ class RegistrationBot:
                     await page.fill(sel, str(val))  # type: ignore[union-attr]
                 # Human-like pause between fields
                 await page.wait_for_timeout(random.randint(300, 800))  # type: ignore[union-attr]
+                fields_filled += 1
                 logger.info("[reg-%d] Step %d: field '%s' filled OK", registration_id, step_idx, name)
             except Exception as exc:
                 logger.warning(
@@ -1141,7 +1143,7 @@ class RegistrationBot:
                 )
 
         submit = step.get("submit_button", {})
-        if submit and submit.get("selector"):
+        if submit and submit.get("selector") and (fields_filled > 0 or not fields):
             submit_sel = submit["selector"]
             logger.info(
                 "[reg-%d] Step %d: clicking submit (selector=%s)",
@@ -1180,6 +1182,11 @@ class RegistrationBot:
                     registration_id, step_idx, submit_sel, exc,
                 )
                 raise
+        elif submit and submit.get("selector"):
+            logger.warning(
+                "[reg-%d] Step %d: skipping submit — no fields filled (0/%d)",
+                registration_id, step_idx, len(fields),
+            )
         else:
             logger.info("[reg-%d] Step %d: no submit button configured", registration_id, step_idx)
 
