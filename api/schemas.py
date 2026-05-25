@@ -51,11 +51,24 @@ class FormFieldSelector(BaseModel):
     default_value: str | None = Field(
         default=None, description="Static value to fill (overrides generated data)"
     )
+    strip_country_code: bool = Field(
+        default=False, description="Strip country code prefix from phone numbers"
+    )
+    country_code: str | None = Field(
+        default=None, description="Country code to strip (e.g. '91' for India)"
+    )
 
 
 class SubmitButtonSelector(BaseModel):
     selector: str = Field(..., min_length=1)
     selector_type: SelectorType = SelectorType.CSS
+
+
+class InlineOTPConfig(BaseModel):
+    """Config for inline OTP verification within a form step."""
+
+    otp_field: str = Field(..., min_length=1, description="CSS selector for OTP input")
+    verify_button: str = Field(..., min_length=1, description="CSS selector for verify button")
 
 
 class FormStep(BaseModel):
@@ -74,6 +87,12 @@ class FormStep(BaseModel):
     )
     wait_after_submit_ms: int = Field(
         default=2000, ge=0, le=30000, description="Wait time after submitting this step"
+    )
+    inline_email_otp: InlineOTPConfig | None = Field(
+        default=None, description="Inline email OTP verification after this step"
+    )
+    inline_phone_otp: InlineOTPConfig | None = Field(
+        default=None, description="Inline phone OTP verification after this step"
     )
 
 
