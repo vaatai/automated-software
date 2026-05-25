@@ -23,6 +23,18 @@ from otp.sms_provider import (
 
 logger = logging.getLogger(__name__)
 
+# ISO 2-letter code -> SMS-Activate numeric country ID
+# Full list: https://sms-activate.org/en/api2#getCountries
+ISO_TO_SMSACTIVATE: dict[str, str] = {
+    "RU": "0", "UA": "1", "KZ": "2", "CN": "3", "PH": "4",
+    "ID": "6", "MY": "7", "KE": "8", "TZ": "9", "NG": "19",
+    "EG": "21", "IN": "22", "IE": "23", "GB": "16", "US": "12",
+    "IL": "13", "PL": "15", "SE": "46", "NL": "48", "CA": "36",
+    "DE": "43", "FR": "78", "ES": "56", "IT": "86", "BR": "73",
+    "AU": "175", "JP": "182", "KR": "190", "TR": "62", "TH": "52",
+    "VN": "10", "ZA": "31", "CO": "33", "MX": "54", "PK": "14",
+}
+
 
 class SMSActivateService(BaseOTPService, SMSProviderAdapter):
     """Backup SMS OTP provider via SMS-Activate.
@@ -58,11 +70,12 @@ class SMSActivateService(BaseOTPService, SMSProviderAdapter):
             service: Service short code (e.g., "go" for Google, "tg" for Telegram).
             operator: Operator preference (not widely used, passed as-is).
         """
+        api_country = ISO_TO_SMSACTIVATE.get(country.upper(), country) if country != "any" else "0"
         params = {
             "api_key": self._api_key,
             "action": "getNumber",
             "service": service,
-            "country": country,
+            "country": api_country,
         }
         if operator != "any":
             params["operator"] = operator
