@@ -17,6 +17,8 @@ import random
 import string
 import time
 
+from captcha.capsolver_service import CapsolverService
+from configs.settings import settings
 from otp.fivesim_service import FiveSimService
 from otp.mailslurp_service import MailSlurpService
 from otp.pvapins_service import PVAPinsService
@@ -78,6 +80,12 @@ class RegistrationBot:
         self.mailslurp = MailSlurpService()
         self.fivesim = FiveSimService()
         self.pvapins = PVAPinsService()
+
+        # CAPTCHA solver
+        self._capsolver: CapsolverService | None = None
+        if settings.CAPSOLVER_API_KEY:
+            self._capsolver = CapsolverService(settings.CAPSOLVER_API_KEY)
+            logger.info("CapSolver CAPTCHA solving enabled")
 
         # Failure detectors
         self._captcha_detector = CaptchaDetector()
@@ -371,6 +379,44 @@ class RegistrationBot:
                         )
                         result["email_used"] = result["email_used"] or reg_data["email"]
 
+                    # ── Step 3e: Detect & solve CAPTCHA ──
+                    captcha_cfg = form_cfg.get("captcha_settings") or {}
+                    captcha_type = captcha_cfg.get("type", "").lower()
+                    captcha_sitekey = captcha_cfg.get("sitekey", "")
+
+                    # Auto-detect CAPTCHA from page if not configured
+                    if (not captcha_type or not captcha_sitekey) and self._capsolver:
+                        detected = await self._detect_captcha_from_page(page, registration_id)
+                        if detected:
+                            captcha_type = captcha_type or detected["type"]
+                            captcha_sitekey = captcha_sitekey or detected["sitekey"]
+                            logger.info(
+                                "[reg-%d] Auto-detected CAPTCHA: type=%s key=%s",
+                                registration_id, captcha_type, captcha_sitekey[:20],
+                            )
+                            result["steps_completed"].append("captcha_auto_detected")
+
+                    captcha_solved = False
+
+                    if captcha_type and captcha_sitekey and self._capsolver:
+                        if captcha_type in ("recaptcha_v3", "recaptchav3"):
+                            logger.info(
+                                "[reg-%d] Pre-solving reCAPTCHA v3 (key=%s)...",
+                                registration_id, captcha_sitekey[:20],
+                            )
+                            token = self._capsolver.solve_recaptcha_v3(
+                                website_url=reg_url,
+                                website_key=captcha_sitekey,
+                                page_action=captcha_cfg.get("action", "register"),
+                                min_score=captcha_cfg.get("min_score", 0.7),
+                            )
+                            if token:
+                                await self._inject_recaptcha_token(page, token, registration_id)
+                                captcha_solved = True
+                                result["steps_completed"].append("captcha_solved_v3")
+                            else:
+                                logger.warning("[reg-%d] reCAPTCHA v3 solve failed", registration_id)
+
                     # ── Step 4: Fill fields + submit ──
                     steps = form_cfg.get("steps", [])
                     if not steps:
@@ -412,6 +458,78 @@ class RegistrationBot:
                             result["screenshot"] = step_check.screenshot_path
                             return result
                         result["steps_completed"].append(f"step_{step_idx}_{step_name}")
+
+                    # ── Step 4b: Post-submit CAPTCHA solving ──
+                    if captcha_type and captcha_sitekey and self._capsolver and not captcha_solved:
+                        await page.wait_for_timeout(2000)  # type: ignore[union-attr]
+                        await session.screenshot("before_captcha_solve")
+
+                        if captcha_type == "hcaptcha":
+                            logger.info(
+                                "[reg-%d] Solving hCaptcha (key=%s)...",
+                                registration_id, captcha_sitekey[:20],
+                            )
+                            token = self._capsolver.solve_hcaptcha(
+                                website_url=reg_url,
+                                website_key=captcha_sitekey,
+                            )
+                            if token:
+                                await self._inject_hcaptcha_token(page, token, registration_id)
+                                captcha_solved = True
+                                result["steps_completed"].append("captcha_solved_hcaptcha")
+                            else:
+                                logger.warning("[reg-%d] hCaptcha solve failed", registration_id)
+
+                        elif captcha_type in ("recaptcha_v2", "recaptchav2"):
+                            is_invisible = captcha_cfg.get("invisible", False)
+                            logger.info(
+                                "[reg-%d] Solving reCAPTCHA v2 (key=%s, invisible=%s)...",
+                                registration_id, captcha_sitekey[:20], is_invisible,
+                            )
+                            token = self._capsolver.solve_recaptcha_v2(
+                                website_url=reg_url,
+                                website_key=captcha_sitekey,
+                                is_invisible=is_invisible,
+                            )
+                            if token:
+                                await self._inject_recaptcha_token(page, token, registration_id)
+                                captcha_solved = True
+                                result["steps_completed"].append("captcha_solved_v2")
+                            else:
+                                logger.warning("[reg-%d] reCAPTCHA v2 solve failed", registration_id)
+
+                        elif captcha_type in ("recaptcha_v3", "recaptchav3"):
+                            logger.info(
+                                "[reg-%d] Solving reCAPTCHA v3 post-submit (key=%s)...",
+                                registration_id, captcha_sitekey[:20],
+                            )
+                            token = self._capsolver.solve_recaptcha_v3(
+                                website_url=reg_url,
+                                website_key=captcha_sitekey,
+                                page_action=captcha_cfg.get("action", "register"),
+                            )
+                            if token:
+                                await self._inject_recaptcha_token(page, token, registration_id)
+                                captcha_solved = True
+                                result["steps_completed"].append("captcha_solved_v3")
+                            else:
+                                logger.warning("[reg-%d] reCAPTCHA v3 solve failed", registration_id)
+
+                        if captcha_solved:
+                            logger.info("[reg-%d] CAPTCHA solved, re-submitting form...", registration_id)
+                            # Re-click the submit button from the last step
+                            if steps:
+                                last_step = steps[-1]
+                                submit = last_step.get("submit_button", {})
+                                if submit and submit.get("selector"):
+                                    try:
+                                        await page.click(submit["selector"])  # type: ignore[union-attr]
+                                        wait_ms = last_step.get("wait_after_submit_ms", 5000)
+                                        await page.wait_for_timeout(wait_ms)  # type: ignore[union-attr]
+                                        logger.info("[reg-%d] Re-submitted after CAPTCHA solve", registration_id)
+                                    except Exception as resubmit_exc:
+                                        logger.warning("[reg-%d] Re-submit failed: %s", registration_id, resubmit_exc)
+                            await session.screenshot("after_captcha_solve")
 
                     # ── Step 5: Email OTP ──
                     otp_settings = form_cfg.get("otp_settings") or {}
@@ -658,6 +776,114 @@ class RegistrationBot:
         """Pre-validate configured selectors, return list of missing ones."""
         results = await self._selector_detector.check_selectors(page, form_cfg)
         return [r.selector for r in results if not r.found]
+
+    # ── CAPTCHA detection & token injection ─────────────────
+
+    async def _detect_captcha_from_page(self, page, reg_id: int) -> dict | None:
+        """Scan page HTML for CAPTCHA sitekeys. Returns {type, sitekey} or None."""
+        try:
+            result = await page.evaluate("""() => {
+                const html = document.documentElement.outerHTML;
+
+                // reCAPTCHA v3 (render= parameter)
+                let m = html.match(/recaptcha\\/api\\.js\\?render=([\\w-]{20,})/);
+                if (m) return {type: 'recaptcha_v3', sitekey: m[1]};
+
+                // reCAPTCHA v2 (data-sitekey)
+                let el = document.querySelector('[data-sitekey]');
+                if (el && html.includes('recaptcha')) {
+                    return {type: 'recaptcha_v2', sitekey: el.getAttribute('data-sitekey')};
+                }
+
+                // hCaptcha (data-sitekey on hcaptcha div)
+                let hc = document.querySelector('.h-captcha[data-sitekey]');
+                if (hc) return {type: 'hcaptcha', sitekey: hc.getAttribute('data-sitekey')};
+
+                // hCaptcha from script
+                m = html.match(/hcaptcha\\.com\\/1\\/api\\.js\\?.*sitekey=([\\w-]{20,})/);
+                if (m) return {type: 'hcaptcha', sitekey: m[1]};
+
+                // Generic data-sitekey with hcaptcha
+                if (el && html.includes('hcaptcha')) {
+                    return {type: 'hcaptcha', sitekey: el.getAttribute('data-sitekey')};
+                }
+
+                return null;
+            }""")
+            if result:
+                logger.info("[reg-%d] Auto-detected CAPTCHA: %s", reg_id, result)
+            return result
+        except Exception as exc:
+            logger.warning("[reg-%d] CAPTCHA auto-detect error: %s", reg_id, exc)
+            return None
+
+    async def _inject_recaptcha_token(self, page, token: str, reg_id: int) -> None:
+        """Inject a solved reCAPTCHA token into the page."""
+        logger.info("[reg-%d] Injecting reCAPTCHA token (%d chars)", reg_id, len(token))
+        await page.evaluate(
+            """(token) => {
+                // Set token in grecaptcha response textarea(s)
+                document.querySelectorAll('[id*="g-recaptcha-response"]')
+                    .forEach(el => { el.value = token; el.innerHTML = token; });
+                document.querySelectorAll('textarea[name="g-recaptcha-response"]')
+                    .forEach(el => { el.value = token; el.innerHTML = token; });
+                // Call grecaptcha callback if available
+                if (typeof ___grecaptcha_cfg !== 'undefined') {
+                    for (let k in ___grecaptcha_cfg.clients) {
+                        let client = ___grecaptcha_cfg.clients[k];
+                        // Walk the client object tree to find the callback
+                        function findCallback(obj, depth) {
+                            if (depth > 5 || !obj) return;
+                            for (let key in obj) {
+                                if (typeof obj[key] === 'function' && key.length === 2) {
+                                    try { obj[key](token); } catch(e) {}
+                                }
+                                if (typeof obj[key] === 'object') findCallback(obj[key], depth + 1);
+                            }
+                        }
+                        findCallback(client, 0);
+                    }
+                }
+                // Also try the standard callback
+                if (window.grecaptchaCallback) {
+                    try { window.grecaptchaCallback(token); } catch(e) {}
+                }
+            }""",
+            token,
+        )
+        logger.info("[reg-%d] reCAPTCHA token injected", reg_id)
+
+    async def _inject_hcaptcha_token(self, page, token: str, reg_id: int) -> None:
+        """Inject a solved hCaptcha token into the page and dismiss the challenge."""
+        logger.info("[reg-%d] Injecting hCaptcha token (%d chars)", reg_id, len(token))
+        await page.evaluate(
+            """(token) => {
+                // Set the hCaptcha response textareas
+                document.querySelectorAll('[name="h-captcha-response"]')
+                    .forEach(el => { el.value = token; el.innerHTML = token; });
+                document.querySelectorAll('[name="g-recaptcha-response"]')
+                    .forEach(el => { el.value = token; el.innerHTML = token; });
+                // Set via hcaptcha JS API if available
+                if (window.hcaptcha) {
+                    try {
+                        // Find all hcaptcha widget IDs and set response
+                        let widgetIds = Object.keys(window.hcaptcha._widgetMap || {});
+                        widgetIds.forEach(wid => {
+                            try { window.hcaptcha.setResponse(token, { widgetID: wid }); } catch(e) {}
+                        });
+                    } catch(e) {}
+                }
+                // Remove any hCaptcha overlay/iframe
+                document.querySelectorAll('[data-hcaptcha-widget-id]').forEach(el => {
+                    el.style.display = 'none';
+                });
+                document.querySelectorAll('iframe[src*="hcaptcha"]').forEach(el => {
+                    el.parentElement.style.display = 'none';
+                });
+            }""",
+            token,
+        )
+        logger.info("[reg-%d] hCaptcha token injected", reg_id)
 
     # ── step execution ─────────────────────────────────────
 
