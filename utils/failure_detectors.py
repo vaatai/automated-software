@@ -132,14 +132,14 @@ class SelectorChangeDetector:
     ) -> list[SelectorCheckResult]:
         """Validate all selectors from a website's form_config against the live page.
 
-        Returns a list of SelectorCheckResult for each configured selector,
-        including alternative selectors found when the original fails.
+        Only validates step-0 field selectors and submit button since later
+        steps and inline OTP fields may not exist on the initial page.
         """
         results: list[SelectorCheckResult] = []
         steps = form_config.get("steps", [])
 
-        for step in steps:
-            # Check field selectors
+        if steps:
+            step = steps[0]
             for field_name, field_cfg in step.get("fields", {}).items():
                 sel = field_cfg.get("selector", "")
                 if not sel:
@@ -147,29 +147,12 @@ class SelectorChangeDetector:
                 result = await self._check_single_selector(page, sel, field_name)
                 results.append(result)
 
-            # Check submit button
             submit = step.get("submit_button", {})
             if submit and submit.get("selector"):
                 result = await self._check_single_selector(
                     page, submit["selector"], "submit_button"
                 )
                 results.append(result)
-
-        # Check OTP selectors
-        otp_settings = form_config.get("otp_settings") or {}
-        for key in ("email_otp_field", "email_otp_submit", "phone_otp_field", "phone_otp_submit"):
-            field_cfg = otp_settings.get(key, {})
-            if isinstance(field_cfg, dict) and field_cfg.get("selector"):
-                result = await self._check_single_selector(page, field_cfg["selector"], key)
-                results.append(result)
-
-        # Check success indicator
-        success = form_config.get("success_indicator") or {}
-        if success and success.get("selector"):
-            result = await self._check_single_selector(
-                page, success["selector"], "success_indicator"
-            )
-            results.append(result)
 
         return results
 
