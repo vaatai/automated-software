@@ -1048,24 +1048,36 @@ class RegistrationBot:
         logger.info("[reg-%d] Injecting Turnstile token (%d chars)", reg_id, len(token))
         await page.evaluate(
             """(token) => {
-                // Set the cf-turnstile-response hidden input(s)
-                document.querySelectorAll('input[name="cf-turnstile-response"]')
-                    .forEach(el => { el.value = token; });
-                // Call turnstile callback if available
-                if (window.turnstile) {
+                // Set the hidden input with React-compatible setter
+                const inputs = document.querySelectorAll('input[name="cf-turnstile-response"]');
+                const nativeSetter = Object.getOwnPropertyDescriptor(
+                    window.HTMLInputElement.prototype, 'value'
+                ).set;
+                inputs.forEach(el => {
+                    nativeSetter.call(el, token);
+                    el.dispatchEvent(new Event('input', {bubbles: true}));
+                    el.dispatchEvent(new Event('change', {bubbles: true}));
+                });
+
+                // Invoke data-callback on Turnstile widget elements
+                document.querySelectorAll('.cf-turnstile, [data-sitekey]').forEach(w => {
+                    const cbName = w.getAttribute('data-callback');
+                    if (cbName && typeof window[cbName] === 'function') {
+                        window[cbName](token);
+                    }
+                });
+
+                // Trigger internal Turnstile callbacks via widget map
+                if (window.turnstile && window.turnstile._widgets) {
                     try {
-                        let widgets = document.querySelectorAll('.cf-turnstile');
-                        widgets.forEach(w => {
-                            let wid = w.getAttribute('data-widget-id');
-                            if (wid) {
-                                try { window.turnstile.getResponse(wid); } catch(e) {}
-                            }
+                        Object.values(window.turnstile._widgets).forEach(w => {
+                            if (w && typeof w.callback === 'function') w.callback(token);
                         });
                     } catch(e) {}
                 }
-                // Dispatch change event on the hidden input
-                document.querySelectorAll('input[name="cf-turnstile-response"]')
-                    .forEach(el => { el.dispatchEvent(new Event('change', {bubbles: true})); });
+
+                // Fire a custom event that React Turnstile components listen to
+                window.dispatchEvent(new CustomEvent('turnstile-callback', {detail: {token}}));
             }""",
             token,
         )
@@ -1080,11 +1092,22 @@ class RegistrationBot:
         step_idx: int,
         result: dict,
     ) -> None:
-        """Re-solve Turnstile (it resets after email OTP verification)."""
-        logger.info(
-            "[reg-%d] Step %d: Solving Turnstile via CapSolver...",
-            reg_id, step_idx,
-        )
+        """Re-solve Turnstile — wait for auto-solve first, then CapSolver fallback."""
+        # Wait up to 15s for Turnstile to auto-solve on Bright Data residential IP
+        logger.info("[reg-%d] Step %d: Waiting for Turnstile auto-solve...", reg_id, step_idx)
+        for _ in range(15):
+            has_token = await page.evaluate("""() => {
+                const inp = document.querySelector('input[name="cf-turnstile-response"]');
+                return inp && inp.value && inp.value.length > 10;
+            }""")
+            if has_token:
+                logger.info("[reg-%d] Step %d: Turnstile auto-solved", reg_id, step_idx)
+                result["steps_completed"].append(f"turnstile_auto_solved_step_{step_idx}")
+                return
+            await asyncio.sleep(1)
+
+        # Fallback: solve via CapSolver
+        logger.info("[reg-%d] Step %d: Turnstile not auto-solved, using CapSolver...", reg_id, step_idx)
         token = await asyncio.to_thread(
             self._capsolver.solve_turnstile,
             website_url=url,
@@ -1092,8 +1115,10 @@ class RegistrationBot:
         )
         if token:
             await self._inject_turnstile_token(page, token, reg_id)
+            # Wait 2s for the callback to propagate in React state
+            await asyncio.sleep(2)
             result["steps_completed"].append(f"turnstile_re_solved_step_{step_idx}")
-            logger.info("[reg-%d] Step %d: Turnstile re-solved", reg_id, step_idx)
+            logger.info("[reg-%d] Step %d: Turnstile re-solved via CapSolver", reg_id, step_idx)
         else:
             logger.warning("[reg-%d] Step %d: Turnstile re-solve failed", reg_id, step_idx)
 
