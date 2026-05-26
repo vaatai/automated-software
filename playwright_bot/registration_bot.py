@@ -467,6 +467,12 @@ class RegistrationBot:
                         # Screenshot before step
                         await session.screenshot(f"before_step_{step_idx}")
 
+                        # Solve Turnstile before phone OTP step (must be solved before Send OTP click)
+                        if step.get("inline_phone_otp") and captcha_type == "turnstile" and captcha_sitekey and self._capsolver:
+                            await self._resolve_turnstile_if_needed(
+                                page, url, captcha_sitekey, registration_id, step_idx, result
+                            )
+
                         await self._execute_step(page, step, step_idx, reg_data, registration_id)
 
                         # Screenshot after step
