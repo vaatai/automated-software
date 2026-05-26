@@ -115,6 +115,7 @@ class RegistrationBot:
         if settings.ANTICAPTCHA_API_KEY:
             self._anticaptcha = AntiCaptchaService(settings.ANTICAPTCHA_API_KEY)
             logger.info("Anti-Captcha CAPTCHA solving enabled (fallback)")
+        self._has_solver = bool(self._capsolver or self._anticaptcha)
 
         # Failure detectors
         self._captcha_detector = CaptchaDetector()
@@ -366,10 +367,10 @@ class RegistrationBot:
                     # ── Step 3b: Check for CAPTCHA / proxy ban ──
                     page_check = await self._check_page_after_navigation(session, error_handler)
                     if page_check is not None:
-                        # If CAPTCHA detected but we have CapSolver, continue to solve it
-                        if page_check.captcha_detected and self._capsolver:
+                        # If CAPTCHA detected but we have a solver, continue to solve it
+                        if page_check.captcha_detected and self._has_solver:
                             logger.info(
-                                "[reg-%d] CAPTCHA detected (%s) but CapSolver available — continuing",
+                                "[reg-%d] CAPTCHA detected (%s) but solver available — continuing",
                                 registration_id, page_check.captcha_type,
                             )
                             result["steps_completed"].append("captcha_detected_will_solve")
@@ -428,7 +429,7 @@ class RegistrationBot:
                     captcha_sitekey = captcha_cfg.get("sitekey") or captcha_cfg.get("site_key") or ""
 
                     # Auto-detect CAPTCHA from page if not configured
-                    if (not captcha_type or not captcha_sitekey) and self._capsolver:
+                    if (not captcha_type or not captcha_sitekey) and self._has_solver:
                         detected = await self._detect_captcha_from_page(page, registration_id)
                         if detected:
                             captcha_type = captcha_type or detected["type"]
@@ -440,9 +441,8 @@ class RegistrationBot:
                             result["steps_completed"].append("captcha_auto_detected")
 
                     captcha_solved = False
-                    has_solver = self._capsolver or self._anticaptcha
 
-                    if captcha_type and captcha_sitekey and has_solver:
+                    if captcha_type and captcha_sitekey and self._has_solver:
                         if captcha_type in ("recaptcha_v3", "recaptchav3"):
                             logger.info(
                                 "[reg-%d] Pre-solving reCAPTCHA v3 (key=%s)...",
@@ -501,7 +501,7 @@ class RegistrationBot:
                         await session.screenshot(f"before_step_{step_idx}")
 
                         # Solve Turnstile before phone OTP step (must be solved before Send OTP click)
-                        if step.get("inline_phone_otp") and captcha_type == "turnstile" and captcha_sitekey and self._capsolver:
+                        if step.get("inline_phone_otp") and captcha_type == "turnstile" and captcha_sitekey and self._has_solver:
                             await self._resolve_turnstile_if_needed(
                                 page, url, captcha_sitekey, registration_id, step_idx, result
                             )
@@ -530,7 +530,7 @@ class RegistrationBot:
                                 result["steps_completed"].append("inline_email_otp_verified")
                                 await session.screenshot(f"after_inline_email_otp_{step_idx}")
                                 # Re-solve Turnstile if it resets after email OTP
-                                if captcha_type == "turnstile" and captcha_sitekey and self._capsolver:
+                                if captcha_type == "turnstile" and captcha_sitekey and self._has_solver:
                                     await self._resolve_turnstile_if_needed(
                                         page, url, captcha_sitekey, registration_id, step_idx, result
                                     )
@@ -580,7 +580,7 @@ class RegistrationBot:
                         except Exception:
                             step_check = None
                         if step_check is not None:
-                            if step_check.captcha_detected and self._capsolver:
+                            if step_check.captcha_detected and self._has_solver:
                                 logger.info(
                                     "[reg-%d] Step %d post-check: CAPTCHA on page but CapSolver available — continuing",
                                     registration_id, step_idx + 1,
@@ -606,7 +606,7 @@ class RegistrationBot:
                         result["steps_completed"].append(f"step_{step_idx}_{step_name}")
 
                     # ── Step 4b: Post-submit CAPTCHA solving ──
-                    if captcha_type and captcha_sitekey and has_solver and not captcha_solved:
+                    if captcha_type and captcha_sitekey and self._has_solver and not captcha_solved:
                         await page.wait_for_timeout(2000)  # type: ignore[union-attr]
                         await session.screenshot("before_captcha_solve")
 

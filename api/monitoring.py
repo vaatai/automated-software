@@ -395,12 +395,12 @@ async def provider_status():
     # CapSolver
     if s.CAPSOLVER_API_KEY:
         try:
-            import httpx as hx
-            resp = hx.post(
-                "https://api.capsolver.com/getBalance",
-                json={"clientKey": s.CAPSOLVER_API_KEY},
-                timeout=10,
-            )
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    "https://api.capsolver.com/getBalance",
+                    json={"clientKey": s.CAPSOLVER_API_KEY},
+                    timeout=10,
+                )
             data = resp.json()
             providers["capsolver"] = {
                 "status": "ok" if data.get("errorId", 0) == 0 else "error",
