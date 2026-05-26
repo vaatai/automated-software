@@ -152,6 +152,10 @@ class FormConfig(BaseModel):
     otp_settings: OTPFieldSettings | None = None
     captcha_settings: CaptchaSettings | None = None
     success_indicator: SuccessIndicator | None = None
+    email_provider: str | None = Field(
+        default=None,
+        description="Email OTP provider: 'mailslurp' (default) or 'mailinator'",
+    )
     wait_after_submit_ms: int = Field(
         default=3000, ge=0, le=30000, description="Global fallback wait time"
     )

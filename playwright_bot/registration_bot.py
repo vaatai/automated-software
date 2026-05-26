@@ -21,6 +21,7 @@ import time
 from captcha.capsolver_service import CapsolverService
 from configs.settings import settings
 from otp.fivesim_service import FiveSimService
+from otp.mailinator_service import MailinatorService
 from otp.mailslurp_service import MailSlurpService
 from otp.pvapins_service import PVAPinsService
 from playwright_bot.browser_manager import BrowserManager, BrowserSession
@@ -79,6 +80,7 @@ class RegistrationBot:
     def __init__(self, browser_manager: BrowserManager) -> None:
         self.manager = browser_manager
         self.mailslurp = MailSlurpService()
+        self.mailinator = MailinatorService()
         self.fivesim = FiveSimService()
         self.pvapins = PVAPinsService()
 
@@ -134,6 +136,7 @@ class RegistrationBot:
         inbox_id: str | None = None
         sms_order_id: str | None = None
         sms_provider: str | None = None
+        email_provider_name: str = "mailslurp"
 
         session_id = f"reg-{registration_id}"
         logger.info(
@@ -158,16 +161,18 @@ class RegistrationBot:
                     result["steps_completed"].append("data_generated")
 
                     # ── Step 1: Provision temp email ──
+                    email_provider_name = (form_cfg.get("email_provider") or "mailslurp").lower()
                     if requires_email_otp:
-                        logger.info("[reg-%d] Provisioning email inbox...", registration_id)
+                        logger.info("[reg-%d] Provisioning email inbox (provider=%s)...", registration_id, email_provider_name)
+                        email_svc = self.mailinator if email_provider_name == "mailinator" else self.mailslurp
                         try:
-                            inbox = await self.mailslurp.create_inbox()
+                            inbox = await email_svc.create_inbox()
                             inbox_id = inbox["inbox_id"]
                             reg_data["email"] = inbox["email_address"]
                             result["email_used"] = reg_data["email"]
                             logger.info(
-                                "[reg-%d] Email provisioned: %s",
-                                registration_id, reg_data["email"],
+                                "[reg-%d] Email provisioned (%s): %s",
+                                registration_id, email_provider_name, reg_data["email"],
                             )
                             result["steps_completed"].append("email_provisioned")
                         except Exception as e:
@@ -470,7 +475,7 @@ class RegistrationBot:
                         inline_email = step.get("inline_email_otp")
                         if inline_email and inbox_id:
                             logger.info("[reg-%d] Step %d: inline email OTP — waiting for code...", registration_id, step_idx)
-                            otp = await self._get_email_otp_with_tracking(inbox_id, error_handler)
+                            otp = await self._get_email_otp_with_tracking(inbox_id, error_handler, email_provider=email_provider_name)
                             if otp:
                                 logger.info("[reg-%d] Step %d: inline email OTP received: %s", registration_id, step_idx, otp)
                                 otp_field_sel = inline_email.get("otp_field", "")
@@ -653,7 +658,7 @@ class RegistrationBot:
                     otp_settings = form_cfg.get("otp_settings") or {}
                     if requires_email_otp and inbox_id:
                         logger.info("[reg-%d] Waiting for email OTP...", registration_id)
-                        otp = await self._get_email_otp_with_tracking(inbox_id, error_handler)
+                        otp = await self._get_email_otp_with_tracking(inbox_id, error_handler, email_provider=email_provider_name)
                         if otp:
                             logger.info("[reg-%d] Email OTP received: %s", registration_id, otp)
                             await self._enter_otp(
@@ -792,7 +797,7 @@ class RegistrationBot:
             result["error_context"] = ctx.to_dict()
         finally:
             reuse_rental_id = (custom_data or {}).get("reuse_rental_id") if custom_data else None
-            await self._cleanup_providers(inbox_id, sms_order_id, sms_provider, result, skip_sms_release=bool(reuse_rental_id))
+            await self._cleanup_providers(inbox_id, sms_order_id, sms_provider, result, skip_sms_release=bool(reuse_rental_id), email_provider=email_provider_name)
 
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
         logger.info(
@@ -1331,19 +1336,22 @@ class RegistrationBot:
         self,
         inbox_id: str,
         error_handler: ErrorHandler,
+        email_provider: str = "mailslurp",
     ) -> str | None:
         """Poll for email OTP with timeout tracking."""
         tracker = OTPTimeoutDetector(max_wait_seconds=120.0)
         tracker.start_polling()
-        otp = await self.mailslurp.get_otp(inbox_id=inbox_id)
+        email_svc = self.mailinator if email_provider == "mailinator" else self.mailslurp
+        otp = await email_svc.get_otp(inbox_id=inbox_id)
         if not otp:
             timeout_result = tracker.build_timeout_result(
                 otp_type="email",
-                provider="mailslurp",
+                provider=email_provider,
                 inbox_id=inbox_id,
             )
             logger.warning(
-                "Email OTP timeout: waited %.1fs, %d polls",
+                "Email OTP timeout (%s): waited %.1fs, %d polls",
+                email_provider,
                 timeout_result.wait_seconds,
                 timeout_result.poll_attempts,
             )
@@ -1392,11 +1400,13 @@ class RegistrationBot:
         sms_provider: str | None,
         result: dict,
         skip_sms_release: bool = False,
+        email_provider: str = "mailslurp",
     ) -> None:
         """Release provisioned email inboxes and phone numbers."""
         if inbox_id:
             try:
-                await self.mailslurp.delete_inbox(inbox_id)
+                email_svc = self.mailinator if email_provider == "mailinator" else self.mailslurp
+                await email_svc.delete_inbox(inbox_id)
             except Exception:
                 logger.debug("Failed to delete inbox %s", inbox_id)
         if sms_order_id and not skip_sms_release:
