@@ -437,20 +437,22 @@ class RegistrationBot:
 
                         elif captcha_type == "turnstile":
                             logger.info(
-                                "[reg-%d] Pre-solving Cloudflare Turnstile (key=%s)...",
-                                registration_id, captcha_sitekey[:20],
+                                "[reg-%d] Waiting for Turnstile auto-solve (Bright Data residential)...",
+                                registration_id,
                             )
-                            token = await asyncio.to_thread(
-                                self._capsolver.solve_turnstile,
-                                website_url=url,
-                                website_key=captcha_sitekey,
-                            )
-                            if token:
-                                await self._inject_turnstile_token(page, token, registration_id)
-                                captcha_solved = True
-                                result["steps_completed"].append("captcha_solved_turnstile")
-                            else:
-                                logger.warning("[reg-%d] Turnstile solve failed", registration_id)
+                            for _tw in range(60):
+                                has_token = await page.evaluate("""() => {
+                                    const inp = document.querySelector('input[name="cf-turnstile-response"]');
+                                    return inp && inp.value && inp.value.length > 10;
+                                }""")
+                                if has_token:
+                                    logger.info("[reg-%d] Turnstile auto-solved (%ds)", registration_id, _tw)
+                                    captcha_solved = True
+                                    result["steps_completed"].append("captcha_solved_turnstile")
+                                    break
+                                await asyncio.sleep(1)
+                            if not captcha_solved:
+                                logger.warning("[reg-%d] Turnstile did not auto-solve in 60s", registration_id)
 
                     # ── Step 4: Fill fields + submit ──
                     steps = form_cfg.get("steps", [])
@@ -632,20 +634,19 @@ class RegistrationBot:
 
                         elif captcha_type == "turnstile":
                             logger.info(
-                                "[reg-%d] Solving Turnstile post-submit (key=%s)...",
-                                registration_id, captcha_sitekey[:20],
+                                "[reg-%d] Waiting for Turnstile auto-solve post-submit...",
+                                registration_id,
                             )
-                            token = await asyncio.to_thread(
-                                self._capsolver.solve_turnstile,
-                                website_url=url,
-                                website_key=captcha_sitekey,
-                            )
-                            if token:
-                                await self._inject_turnstile_token(page, token, registration_id)
-                                captcha_solved = True
-                                result["steps_completed"].append("captcha_solved_turnstile")
-                            else:
-                                logger.warning("[reg-%d] Turnstile solve failed", registration_id)
+                            for _tw in range(60):
+                                has_tok = await page.evaluate("""() => {
+                                    const inp = document.querySelector('input[name="cf-turnstile-response"]');
+                                    return inp && inp.value && inp.value.length > 10;
+                                }""")
+                                if has_tok:
+                                    captcha_solved = True
+                                    result["steps_completed"].append("captcha_solved_turnstile")
+                                    break
+                                await asyncio.sleep(1)
 
                         if captcha_solved:
                             logger.info("[reg-%d] CAPTCHA solved, re-submitting form...", registration_id)
@@ -1092,35 +1093,20 @@ class RegistrationBot:
         step_idx: int,
         result: dict,
     ) -> None:
-        """Re-solve Turnstile — wait for auto-solve first, then CapSolver fallback."""
-        # Wait up to 15s for Turnstile to auto-solve on Bright Data residential IP
+        """Wait for Turnstile to auto-solve on Bright Data residential IP."""
         logger.info("[reg-%d] Step %d: Waiting for Turnstile auto-solve...", reg_id, step_idx)
-        for _ in range(15):
+        for i in range(60):
             has_token = await page.evaluate("""() => {
                 const inp = document.querySelector('input[name="cf-turnstile-response"]');
                 return inp && inp.value && inp.value.length > 10;
             }""")
             if has_token:
-                logger.info("[reg-%d] Step %d: Turnstile auto-solved", reg_id, step_idx)
+                logger.info("[reg-%d] Step %d: Turnstile auto-solved (%ds)", reg_id, step_idx, i)
                 result["steps_completed"].append(f"turnstile_auto_solved_step_{step_idx}")
                 return
             await asyncio.sleep(1)
 
-        # Fallback: solve via CapSolver
-        logger.info("[reg-%d] Step %d: Turnstile not auto-solved, using CapSolver...", reg_id, step_idx)
-        token = await asyncio.to_thread(
-            self._capsolver.solve_turnstile,
-            website_url=url,
-            website_key=sitekey,
-        )
-        if token:
-            await self._inject_turnstile_token(page, token, reg_id)
-            # Wait 2s for the callback to propagate in React state
-            await asyncio.sleep(2)
-            result["steps_completed"].append(f"turnstile_re_solved_step_{step_idx}")
-            logger.info("[reg-%d] Step %d: Turnstile re-solved via CapSolver", reg_id, step_idx)
-        else:
-            logger.warning("[reg-%d] Step %d: Turnstile re-solve failed", reg_id, step_idx)
+        logger.warning("[reg-%d] Step %d: Turnstile did not auto-solve in 60s", reg_id, step_idx)
 
     async def _change_country_code_dropdown(
         self,
