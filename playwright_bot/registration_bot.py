@@ -664,9 +664,9 @@ class RegistrationBot:
                                         logger.warning("[reg-%d] Re-submit failed: %s", registration_id, resubmit_exc)
                             await session.screenshot("after_captcha_solve")
 
-                    # ── Step 5: Email OTP ──
+                    # ── Step 5: Email OTP (skip if already verified inline) ──
                     otp_settings = form_cfg.get("otp_settings") or {}
-                    if requires_email_otp and inbox_id:
+                    if requires_email_otp and inbox_id and not result.get("email_otp_verified"):
                         logger.info("[reg-%d] Waiting for email OTP...", registration_id)
                         otp = await self._get_email_otp_with_tracking(inbox_id, error_handler, email_provider=email_provider_name)
                         if otp:
@@ -694,8 +694,8 @@ class RegistrationBot:
                             result["error_context"] = ctx.to_dict()
                             await session.screenshot("email_otp_timeout")
 
-                    # ── Step 6: Mobile OTP ──
-                    if requires_mobile_otp and sms_order_id:
+                    # ── Step 6: Mobile OTP (skip if already verified inline) ──
+                    if requires_mobile_otp and sms_order_id and not result.get("mobile_otp_verified"):
                         logger.info("[reg-%d] Waiting for mobile OTP...", registration_id)
                         sms_skip_count = int((custom_data or {}).get("reuse_otp_count", 0) or 0)
                         sms_known_otp = (custom_data or {}).get("reuse_last_otp") or None
