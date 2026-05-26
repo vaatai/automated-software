@@ -149,7 +149,6 @@ celery_app.conf.update(
     broker_transport_options={
         "visibility_timeout": 3600,
         "queue_order_strategy": "priority",
-        "sep": ".",
         "priority_steps": list(range(10)),
     },
 
