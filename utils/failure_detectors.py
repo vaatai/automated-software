@@ -333,9 +333,10 @@ class ProxyBanDetector:
             result.rate_limited = True
             result.indicators.append(f"http_{status_code}")
 
-        # Content-based ban detection
+        # Content-based ban detection (only flag if the page is short/error-like)
+        page_len = len(html_lower)
         for pattern in self.CONTENT_BAN_PATTERNS:
-            if pattern in html_lower:
+            if pattern in html_lower and page_len < 10000:
                 result.banned = True
                 result.indicators.append(f"content:{pattern}")
 
