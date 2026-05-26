@@ -1,9 +1,11 @@
-"""Task monitoring worker — detects stale tasks and provides queue health metrics.
+"""Task monitoring worker — detects stale tasks, monitors worker health,
+provides queue health metrics, and auto-throttles on high RAM usage.
 
 Runs on the monitoring queue to avoid interfering with registration workers.
 """
 
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import create_engine, func, select, update
@@ -92,3 +94,86 @@ def check_stale_tasks() -> dict:
         raise
     finally:
         db.close()
+
+
+RAM_THROTTLE_PERCENT = 85
+
+
+def _get_memory_usage() -> dict:
+    """Read system memory stats from /proc/meminfo (Linux only)."""
+    try:
+        with open("/proc/meminfo") as f:
+            info = {}
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 2:
+                    info[parts[0].rstrip(":")] = int(parts[1])
+            total_kb = info.get("MemTotal", 0)
+            avail_kb = info.get("MemAvailable", 0)
+            used_kb = total_kb - avail_kb
+            pct = round(used_kb / total_kb * 100, 1) if total_kb else 0
+            return {
+                "total_mb": round(total_kb / 1024),
+                "used_mb": round(used_kb / 1024),
+                "available_mb": round(avail_kb / 1024),
+                "percent": pct,
+            }
+    except Exception:
+        return {"total_mb": 0, "used_mb": 0, "available_mb": 0, "percent": 0}
+
+
+@celery_app.task(
+    name="workers.task_monitor.check_worker_health",
+    queue="monitoring",
+    max_retries=0,
+)
+def check_worker_health() -> dict:
+    """Monitor worker health: RAM usage, active tasks, auto-pause on high memory.
+
+    If RAM usage exceeds RAM_THROTTLE_PERCENT, active registration workers
+    are signaled to cancel prefetched tasks (preventing new work pickup).
+    """
+    mem = _get_memory_usage()
+    throttled = False
+
+    if mem["percent"] > RAM_THROTTLE_PERCENT:
+        logger.warning(
+            "RAM usage %.1f%% exceeds %d%% threshold — throttling workers",
+            mem["percent"], RAM_THROTTLE_PERCENT,
+        )
+        try:
+            celery_app.control.cancel_consumer(
+                "registrations", reply=True, timeout=5.0
+            )
+            throttled = True
+        except Exception as exc:
+            logger.warning("Failed to cancel consumer: %s", exc)
+    elif mem["percent"] < RAM_THROTTLE_PERCENT - 10:
+        # Re-enable if we dropped below threshold
+        try:
+            celery_app.control.add_consumer(
+                "registrations", reply=True, timeout=5.0
+            )
+        except Exception:
+            pass
+
+    # Gather worker info
+    try:
+        inspect = celery_app.control.inspect(timeout=5.0)
+        active = inspect.active() or {}
+        stats = inspect.stats() or {}
+        worker_count = len(stats)
+        active_tasks = sum(len(tasks) for tasks in active.values())
+    except Exception:
+        worker_count = 0
+        active_tasks = 0
+
+    result = {
+        "memory": mem,
+        "throttled": throttled,
+        "worker_count": worker_count,
+        "active_tasks": active_tasks,
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+    }
+    logger.info("Worker health: %s", result)
+    return result

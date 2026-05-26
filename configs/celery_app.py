@@ -92,6 +92,10 @@ task_routes = {
         "queue": "monitoring",
         "routing_key": "monitoring",
     },
+    "workers.task_monitor.check_worker_health": {
+        "queue": "monitoring",
+        "routing_key": "monitoring",
+    },
 }
 
 # ── celery app ──────────────────────────────────────────────
@@ -182,6 +186,11 @@ celery_app.conf.update(
         "cleanup-daily-records": {
             "task": "workers.daily_limit_worker.cleanup_daily_records",
             "schedule": 604800.0,  # weekly
+            "options": {"queue": "monitoring"},
+        },
+        "check-worker-health": {
+            "task": "workers.task_monitor.check_worker_health",
+            "schedule": 60.0,  # every minute
             "options": {"queue": "monitoring"},
         },
     },

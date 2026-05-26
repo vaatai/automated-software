@@ -22,6 +22,7 @@ Endpoints:
   GET  /api/monitoring/metrics/rankings   — website rankings by volume/success
 """
 
+import os
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -299,3 +300,166 @@ async def website_rankings(
     """Rank websites by registration volume and success rate."""
     svc = DashboardService(db)
     return await svc.get_website_rankings(days)
+
+
+# ── Production monitoring endpoints ─────────────────────────
+
+
+@router.get("/captcha-stats")
+async def captcha_stats(db: AsyncSession = Depends(get_db)):
+    """CAPTCHA solve statistics: success/failure counts by type."""
+    from sqlalchemy import text
+
+    result = await db.execute(text("""
+        SELECT
+            COUNT(*) FILTER (WHERE error_context::text LIKE '%captcha_solved%') AS captcha_solved,
+            COUNT(*) FILTER (WHERE error_category = 'captcha_detected') AS captcha_blocked,
+            COUNT(*) FILTER (WHERE error_context::text LIKE '%captcha_solved_v3%') AS recaptcha_v3_solved,
+            COUNT(*) FILTER (WHERE error_context::text LIKE '%captcha_solved_v2%') AS recaptcha_v2_solved,
+            COUNT(*) FILTER (WHERE error_context::text LIKE '%captcha_solved_hcaptcha%') AS hcaptcha_solved,
+            COUNT(*) FILTER (WHERE error_context::text LIKE '%captcha_solved_turnstile%') AS turnstile_solved
+        FROM registrations
+        WHERE created_at > NOW() - INTERVAL '7 days'
+    """))
+    row = result.mappings().first()
+    return dict(row) if row else {}
+
+
+@router.get("/provider-status")
+async def provider_status():
+    """Check balance and availability for all SMS providers."""
+    import httpx
+    from configs.settings import settings as s
+
+    providers = {}
+
+    # 5SIM
+    if s.FIVESIM_API_KEY:
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    f"{s.FIVESIM_BASE_URL}/user/profile",
+                    headers={"Authorization": f"Bearer {s.FIVESIM_API_KEY}"},
+                    timeout=10,
+                )
+                data = resp.json()
+                providers["5sim"] = {
+                    "status": "ok",
+                    "balance": data.get("balance", 0),
+                    "currency": data.get("default_country", {}).get("currency", "RUB"),
+                }
+        except Exception as exc:
+            providers["5sim"] = {"status": "error", "error": str(exc)}
+    else:
+        providers["5sim"] = {"status": "not_configured"}
+
+    # PVAPins
+    if s.PVAPINS_API_KEY:
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    f"{s.PVAPINS_BASE_URL}/getBalance",
+                    params={"apikey": s.PVAPINS_API_KEY},
+                    timeout=10,
+                )
+                data = resp.json()
+                providers["pvapins"] = {
+                    "status": "ok",
+                    "balance": data.get("balance", 0),
+                }
+        except Exception as exc:
+            providers["pvapins"] = {"status": "error", "error": str(exc)}
+    else:
+        providers["pvapins"] = {"status": "not_configured"}
+
+    # SMS-Activate
+    if s.SMSACTIVATE_API_KEY and s.SMSACTIVATE_API_KEY != "test":
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(
+                    s.SMSACTIVATE_BASE_URL,
+                    params={"api_key": s.SMSACTIVATE_API_KEY, "action": "getBalance"},
+                    timeout=10,
+                )
+                text = resp.text
+                if "ACCESS_BALANCE" in text:
+                    balance = float(text.split(":")[1])
+                    providers["sms-activate"] = {"status": "ok", "balance": balance}
+                else:
+                    providers["sms-activate"] = {"status": "error", "error": text}
+        except Exception as exc:
+            providers["sms-activate"] = {"status": "error", "error": str(exc)}
+    else:
+        providers["sms-activate"] = {"status": "not_configured"}
+
+    # CapSolver
+    if s.CAPSOLVER_API_KEY:
+        try:
+            import httpx as hx
+            resp = hx.post(
+                "https://api.capsolver.com/getBalance",
+                json={"clientKey": s.CAPSOLVER_API_KEY},
+                timeout=10,
+            )
+            data = resp.json()
+            providers["capsolver"] = {
+                "status": "ok" if data.get("errorId", 0) == 0 else "error",
+                "balance": data.get("balance", 0),
+            }
+        except Exception as exc:
+            providers["capsolver"] = {"status": "error", "error": str(exc)}
+    else:
+        providers["capsolver"] = {"status": "not_configured"}
+
+    return providers
+
+
+@router.get("/proxy-health")
+async def proxy_health(db: AsyncSession = Depends(get_db)):
+    """Proxy pool health: active/banned/rate-limited counts and per-proxy stats."""
+    from sqlalchemy import text
+
+    result = await db.execute(text("""
+        SELECT
+            COUNT(*) AS total,
+            COUNT(*) FILTER (WHERE is_active = true AND deleted_at IS NULL) AS active,
+            COUNT(*) FILTER (WHERE ban_count > 0) AS banned,
+            COUNT(*) FILTER (WHERE rate_limit_count > 0) AS rate_limited,
+            ROUND(AVG(success_count)::numeric, 1) AS avg_success,
+            ROUND(AVG(fail_count)::numeric, 1) AS avg_fail
+        FROM proxies
+        WHERE deleted_at IS NULL
+    """))
+    row = result.mappings().first()
+    return dict(row) if row else {}
+
+
+@router.get("/vps-resources")
+async def vps_resources():
+    """Current VPS resource usage: CPU, memory, disk."""
+    import shutil
+
+    from workers.task_monitor import _get_memory_usage
+
+    mem = _get_memory_usage()
+
+    # CPU load average
+    try:
+        load1, load5, load15 = os.getloadavg()
+        cpu = {"load_1m": round(load1, 2), "load_5m": round(load5, 2), "load_15m": round(load15, 2)}
+    except Exception:
+        cpu = {"load_1m": 0, "load_5m": 0, "load_15m": 0}
+
+    # Disk usage
+    try:
+        usage = shutil.disk_usage("/")
+        disk = {
+            "total_gb": round(usage.total / (1024**3), 1),
+            "used_gb": round(usage.used / (1024**3), 1),
+            "free_gb": round(usage.free / (1024**3), 1),
+            "percent": round(usage.used / usage.total * 100, 1),
+        }
+    except Exception:
+        disk = {"total_gb": 0, "used_gb": 0, "free_gb": 0, "percent": 0}
+
+    return {"memory": mem, "cpu": cpu, "disk": disk}

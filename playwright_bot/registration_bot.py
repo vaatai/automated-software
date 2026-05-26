@@ -18,6 +18,7 @@ import random
 import string
 import time
 
+from captcha.anticaptcha_service import AntiCaptchaService
 from captcha.capsolver_service import CapsolverService
 from configs.settings import settings
 from otp.fivesim_service import FiveSimService
@@ -42,6 +43,27 @@ ELEMENT_TIMEOUT = 10_000
 OTP_ELEMENT_TIMEOUT = 15_000
 
 # Cloudflare challenge-specific indicators (must match ≥2 to trigger)
+async def _human_mouse_move(page: object, target_selector: str) -> None:
+    """Simulate human-like mouse movement to target element before interaction."""
+    try:
+        box = await page.locator(target_selector).first.bounding_box()  # type: ignore[union-attr]
+        if not box:
+            return
+        # Target: center of element with slight randomness
+        tx = box["x"] + box["width"] * random.uniform(0.3, 0.7)
+        ty = box["y"] + box["height"] * random.uniform(0.3, 0.7)
+        # Move in 2-4 intermediate steps for a natural curve
+        steps = random.randint(2, 4)
+        for i in range(1, steps + 1):
+            frac = i / steps
+            mx = tx * frac + random.uniform(-15, 15) * (1 - frac)
+            my = ty * frac + random.uniform(-10, 10) * (1 - frac)
+            await page.mouse.move(mx, my)  # type: ignore[union-attr]
+            await page.wait_for_timeout(random.randint(10, 40))  # type: ignore[union-attr]
+    except Exception:
+        pass  # non-critical
+
+
 CLOUDFLARE_CHALLENGE_INDICATORS = [
     "cf-browser-verification",
     "cf_chl_opt",
@@ -84,11 +106,15 @@ class RegistrationBot:
         self.fivesim = FiveSimService()
         self.pvapins = PVAPinsService()
 
-        # CAPTCHA solver
+        # CAPTCHA solvers (primary + fallback)
         self._capsolver: CapsolverService | None = None
+        self._anticaptcha: AntiCaptchaService | None = None
         if settings.CAPSOLVER_API_KEY:
             self._capsolver = CapsolverService(settings.CAPSOLVER_API_KEY)
-            logger.info("CapSolver CAPTCHA solving enabled")
+            logger.info("CapSolver CAPTCHA solving enabled (primary)")
+        if settings.ANTICAPTCHA_API_KEY:
+            self._anticaptcha = AntiCaptchaService(settings.ANTICAPTCHA_API_KEY)
+            logger.info("Anti-Captcha CAPTCHA solving enabled (fallback)")
 
         # Failure detectors
         self._captcha_detector = CaptchaDetector()
@@ -414,15 +440,16 @@ class RegistrationBot:
                             result["steps_completed"].append("captcha_auto_detected")
 
                     captcha_solved = False
+                    has_solver = self._capsolver or self._anticaptcha
 
-                    if captcha_type and captcha_sitekey and self._capsolver:
+                    if captcha_type and captcha_sitekey and has_solver:
                         if captcha_type in ("recaptcha_v3", "recaptchav3"):
                             logger.info(
                                 "[reg-%d] Pre-solving reCAPTCHA v3 (key=%s)...",
                                 registration_id, captcha_sitekey[:20],
                             )
-                            token = await asyncio.to_thread(
-                                self._capsolver.solve_recaptcha_v3,
+                            token = await self._solve_with_fallback(
+                                "solve_recaptcha_v3",
                                 website_url=url,
                                 website_key=captcha_sitekey,
                                 page_action=captcha_cfg.get("action", "register"),
@@ -433,7 +460,7 @@ class RegistrationBot:
                                 captcha_solved = True
                                 result["steps_completed"].append("captcha_solved_v3")
                             else:
-                                logger.warning("[reg-%d] reCAPTCHA v3 solve failed", registration_id)
+                                logger.warning("[reg-%d] reCAPTCHA v3 solve failed (all solvers)", registration_id)
 
                         elif captcha_type == "turnstile":
                             logger.info(
@@ -579,7 +606,7 @@ class RegistrationBot:
                         result["steps_completed"].append(f"step_{step_idx}_{step_name}")
 
                     # ── Step 4b: Post-submit CAPTCHA solving ──
-                    if captcha_type and captcha_sitekey and self._capsolver and not captcha_solved:
+                    if captcha_type and captcha_sitekey and has_solver and not captcha_solved:
                         await page.wait_for_timeout(2000)  # type: ignore[union-attr]
                         await session.screenshot("before_captcha_solve")
 
@@ -588,8 +615,8 @@ class RegistrationBot:
                                 "[reg-%d] Solving hCaptcha (key=%s)...",
                                 registration_id, captcha_sitekey[:20],
                             )
-                            token = await asyncio.to_thread(
-                                self._capsolver.solve_hcaptcha,
+                            token = await self._solve_with_fallback(
+                                "solve_hcaptcha",
                                 website_url=url,
                                 website_key=captcha_sitekey,
                             )
@@ -598,7 +625,7 @@ class RegistrationBot:
                                 captcha_solved = True
                                 result["steps_completed"].append("captcha_solved_hcaptcha")
                             else:
-                                logger.warning("[reg-%d] hCaptcha solve failed", registration_id)
+                                logger.warning("[reg-%d] hCaptcha solve failed (all solvers)", registration_id)
 
                         elif captcha_type in ("recaptcha_v2", "recaptchav2"):
                             is_invisible = captcha_cfg.get("invisible", False)
@@ -606,8 +633,8 @@ class RegistrationBot:
                                 "[reg-%d] Solving reCAPTCHA v2 (key=%s, invisible=%s)...",
                                 registration_id, captcha_sitekey[:20], is_invisible,
                             )
-                            token = await asyncio.to_thread(
-                                self._capsolver.solve_recaptcha_v2,
+                            token = await self._solve_with_fallback(
+                                "solve_recaptcha_v2",
                                 website_url=url,
                                 website_key=captcha_sitekey,
                                 is_invisible=is_invisible,
@@ -617,15 +644,15 @@ class RegistrationBot:
                                 captcha_solved = True
                                 result["steps_completed"].append("captcha_solved_v2")
                             else:
-                                logger.warning("[reg-%d] reCAPTCHA v2 solve failed", registration_id)
+                                logger.warning("[reg-%d] reCAPTCHA v2 solve failed (all solvers)", registration_id)
 
                         elif captcha_type in ("recaptcha_v3", "recaptchav3"):
                             logger.info(
                                 "[reg-%d] Solving reCAPTCHA v3 post-submit (key=%s)...",
                                 registration_id, captcha_sitekey[:20],
                             )
-                            token = await asyncio.to_thread(
-                                self._capsolver.solve_recaptcha_v3,
+                            token = await self._solve_with_fallback(
+                                "solve_recaptcha_v3",
                                 website_url=url,
                                 website_key=captcha_sitekey,
                                 page_action=captcha_cfg.get("action", "register"),
@@ -635,7 +662,7 @@ class RegistrationBot:
                                 captcha_solved = True
                                 result["steps_completed"].append("captcha_solved_v3")
                             else:
-                                logger.warning("[reg-%d] reCAPTCHA v3 solve failed", registration_id)
+                                logger.warning("[reg-%d] reCAPTCHA v3 solve failed (all solvers)", registration_id)
 
                         elif captcha_type == "turnstile":
                             logger.info(
@@ -841,6 +868,41 @@ class RegistrationBot:
         )
         return result
 
+    # ── Frontend validation detection ──────────────────────
+
+    async def _detect_validation_errors(self, page: object, reg_id: int, step_idx: int) -> list[str]:
+        """Detect visible frontend validation error messages after form filling."""
+        try:
+            errors = await page.evaluate("""() => {
+                const msgs = [];
+                // Common validation error selectors
+                const selectors = [
+                    '.error', '.error-message', '.field-error', '.form-error',
+                    '.invalid-feedback', '.help-block.error', '[role="alert"]',
+                    '.text-danger', '.text-red-500', '.validation-error',
+                    'span.error', 'div.error', 'p.error',
+                ];
+                for (const sel of selectors) {
+                    for (const el of document.querySelectorAll(sel)) {
+                        const text = (el.textContent || '').trim();
+                        if (text && text.length < 200 && el.offsetParent !== null) {
+                            msgs.push(text);
+                        }
+                    }
+                }
+                // Also check :invalid pseudo-class on inputs
+                const invalidInputs = document.querySelectorAll('input:invalid, select:invalid');
+                for (const inp of invalidInputs) {
+                    if (inp.validationMessage) {
+                        msgs.push(inp.name + ': ' + inp.validationMessage);
+                    }
+                }
+                return [...new Set(msgs)].slice(0, 5);
+            }""")
+            return errors or []
+        except Exception:
+            return []
+
     # ── Cloudflare detection ───────────────────────────────
 
     async def _detect_cloudflare(self, page: object) -> bool:
@@ -999,6 +1061,30 @@ class RegistrationBot:
         except Exception as exc:
             logger.warning("[reg-%d] CAPTCHA auto-detect error: %s", reg_id, exc)
             return None
+
+    async def _solve_with_fallback(self, method_name: str, **kwargs) -> str | None:
+        """Try CapSolver first, then Anti-Captcha as fallback."""
+        if self._capsolver:
+            try:
+                fn = getattr(self._capsolver, method_name)
+                token = await asyncio.to_thread(fn, **kwargs)
+                if token:
+                    return token
+                logger.warning("CapSolver %s returned None, trying fallback...", method_name)
+            except Exception as exc:
+                logger.warning("CapSolver %s failed: %s, trying fallback...", method_name, exc)
+
+        if self._anticaptcha:
+            try:
+                fn = getattr(self._anticaptcha, method_name)
+                token = await asyncio.to_thread(fn, **kwargs)
+                if token:
+                    logger.info("Anti-Captcha fallback succeeded for %s", method_name)
+                    return token
+            except Exception as exc:
+                logger.warning("Anti-Captcha %s failed: %s", method_name, exc)
+
+        return None
 
     async def _inject_recaptcha_token(self, page, token: str, reg_id: int) -> None:
         """Inject a solved reCAPTCHA token into the page."""
@@ -1263,6 +1349,7 @@ class RegistrationBot:
                     val[:20] + "..." if len(str(val)) > 20 else val,
                 )
                 await page.wait_for_selector(sel, timeout=ELEMENT_TIMEOUT)  # type: ignore[union-attr]
+                await _human_mouse_move(page, sel)
                 field_type = cfg.get("field_type", "text")
                 if field_type == "checkbox":
                     await page.check(sel)  # type: ignore[union-attr]
@@ -1271,12 +1358,11 @@ class RegistrationBot:
                 elif field_type == "radio":
                     await page.click(sel)  # type: ignore[union-attr]
                 elif field_type == "tel":
-                    # For tel inputs, use keyboard typing for React compatibility
                     await page.click(sel)  # type: ignore[union-attr]
                     await page.wait_for_timeout(200)  # type: ignore[union-attr]
                     await page.keyboard.press("Control+a")  # type: ignore[union-attr]
                     await page.wait_for_timeout(100)  # type: ignore[union-attr]
-                    await page.keyboard.type(str(val), delay=40)  # type: ignore[union-attr]
+                    await page.keyboard.type(str(val), delay=random.randint(30, 80))  # type: ignore[union-attr]
                 else:
                     await page.click(sel)  # type: ignore[union-attr]
                     await page.wait_for_timeout(random.randint(100, 300))  # type: ignore[union-attr]
@@ -1291,6 +1377,15 @@ class RegistrationBot:
                     registration_id, step_idx, name, sel, exc,
                 )
 
+        # Detect frontend validation errors after filling
+        if fields_filled > 0:
+            validation_errors = await self._detect_validation_errors(page, registration_id, step_idx)
+            if validation_errors:
+                logger.warning(
+                    "[reg-%d] Step %d: validation errors detected: %s",
+                    registration_id, step_idx, validation_errors,
+                )
+
         submit = step.get("submit_button", {})
         if submit and submit.get("selector") and (fields_filled > 0 or not fields):
             submit_sel = submit["selector"]
@@ -1299,6 +1394,7 @@ class RegistrationBot:
                 registration_id, step_idx, submit_sel,
             )
             try:
+                await _human_mouse_move(page, submit_sel)
                 locator = page.locator(submit_sel).first  # type: ignore[union-attr]
                 # Wait up to 15s for the button to be enabled
                 try:
