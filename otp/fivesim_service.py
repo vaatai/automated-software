@@ -77,7 +77,7 @@ class FiveSimService(BaseOTPService, SMSProviderAdapter):
         data: dict | None = None
         for svc in services_to_try:
             try:
-                data = await self._buy_activation(api_country, operator, svc)
+                data = await self._buy_activation(api_country, operator, svc, country=country)
                 service = svc
                 break
             except (NumberUnavailableError, ProviderError) as exc:
@@ -103,9 +103,17 @@ class FiveSimService(BaseOTPService, SMSProviderAdapter):
         )
 
     async def _buy_activation(
-        self, api_country: str, operator: str, service: str
+        self, api_country: str, operator: str, service: str, country: str = "",
     ) -> dict:
-        """Make a single buy/activation API call."""
+        """Make a single buy/activation API call.
+
+        Args:
+            api_country: 5SIM-internal country slug (e.g. "india").
+            operator: Operator filter (e.g. "any").
+            service: Service name (e.g. "other").
+            country: Original user-facing ISO code (e.g. "IN") for error messages.
+        """
+        display_country = country or api_country
         async with httpx.AsyncClient() as client:
             try:
                 resp = await client.get(
@@ -116,7 +124,7 @@ class FiveSimService(BaseOTPService, SMSProviderAdapter):
                 resp.raise_for_status()
             except httpx.HTTPStatusError as exc:
                 if exc.response.status_code == 404:
-                    raise NumberUnavailableError(self.provider_name, api_country, service)
+                    raise NumberUnavailableError(self.provider_name, display_country, service)
                 raise ProviderError(
                     self.provider_name,
                     f"HTTP {exc.response.status_code}",
