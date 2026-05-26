@@ -87,17 +87,26 @@ class RentalService:
     ) -> RentalNumber:
         """Rent a new phone number for the specified duration.
 
-        Provider order: PVAPins → 5SIM → SMS-Activate (all countries).
+        Provider order:
+        - India: PVAPins → 5SIM → SMS-Activate
+        - All others: 5SIM → PVAPins → SMS-Activate
         """
         rental_result = None
         provider_name = None
         errors: list[str] = []
 
-        providers = [
-            ("pvapins", self.pvapins),
-            ("5sim", self.fivesim),
-            ("sms-activate", self.smsactivate),
-        ]
+        if country.upper() == "IN":
+            providers = [
+                ("pvapins", self.pvapins),
+                ("5sim", self.fivesim),
+                ("sms-activate", self.smsactivate),
+            ]
+        else:
+            providers = [
+                ("5sim", self.fivesim),
+                ("pvapins", self.pvapins),
+                ("sms-activate", self.smsactivate),
+            ]
         for name, provider in providers:
             try:
                 rental_result = await provider.rent_number(country=country)
