@@ -161,7 +161,8 @@ class RegistrationBot:
                     result["steps_completed"].append("data_generated")
 
                     # ── Step 1: Provision temp email ──
-                    email_provider_name = (form_cfg.get("email_provider") or "mailslurp").lower()
+                    _fc = website_config.get("form_config") or {}
+                    email_provider_name = (_fc.get("email_provider") or "mailslurp").lower()
                     if requires_email_otp:
                         logger.info("[reg-%d] Provisioning email inbox (provider=%s)...", registration_id, email_provider_name)
                         email_svc = self.mailinator if email_provider_name == "mailinator" else self.mailslurp

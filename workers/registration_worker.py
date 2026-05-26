@@ -392,11 +392,6 @@ def _do_registration(
                 db.commit()
                 raise task.retry(
                     exc=Exception(result.get("error", "Retriable failure")),
-                    kwargs={
-                        "registration_id": registration_id,
-                        "website_id": website_id,
-                        "failed_proxy_ids": failed_proxy_ids,
-                    },
                 )
             else:
                 _update_daily_count(db, website_id, success=False)
