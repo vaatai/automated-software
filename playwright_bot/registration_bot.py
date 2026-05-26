@@ -21,6 +21,7 @@ import time
 from captcha.capsolver_service import CapsolverService
 from configs.settings import settings
 from otp.fivesim_service import FiveSimService
+from otp.mailinator_service import MailinatorService
 from otp.mailslurp_service import MailSlurpService
 from otp.pvapins_service import PVAPinsService
 from playwright_bot.browser_manager import BrowserManager, BrowserSession
@@ -79,6 +80,7 @@ class RegistrationBot:
     def __init__(self, browser_manager: BrowserManager) -> None:
         self.manager = browser_manager
         self.mailslurp = MailSlurpService()
+        self.mailinator = MailinatorService()
         self.fivesim = FiveSimService()
         self.pvapins = PVAPinsService()
 
@@ -134,6 +136,7 @@ class RegistrationBot:
         inbox_id: str | None = None
         sms_order_id: str | None = None
         sms_provider: str | None = None
+        email_provider_name: str = "mailslurp"
 
         session_id = f"reg-{registration_id}"
         logger.info(
@@ -158,16 +161,19 @@ class RegistrationBot:
                     result["steps_completed"].append("data_generated")
 
                     # ── Step 1: Provision temp email ──
+                    _fc = website_config.get("form_config") or {}
+                    email_provider_name = (_fc.get("email_provider") or "mailslurp").lower()
                     if requires_email_otp:
-                        logger.info("[reg-%d] Provisioning email inbox...", registration_id)
+                        logger.info("[reg-%d] Provisioning email inbox (provider=%s)...", registration_id, email_provider_name)
+                        email_svc = self.mailinator if email_provider_name == "mailinator" else self.mailslurp
                         try:
-                            inbox = await self.mailslurp.create_inbox()
+                            inbox = await email_svc.create_inbox()
                             inbox_id = inbox["inbox_id"]
                             reg_data["email"] = inbox["email_address"]
                             result["email_used"] = reg_data["email"]
                             logger.info(
-                                "[reg-%d] Email provisioned: %s",
-                                registration_id, reg_data["email"],
+                                "[reg-%d] Email provisioned (%s): %s",
+                                registration_id, email_provider_name, reg_data["email"],
                             )
                             result["steps_completed"].append("email_provisioned")
                         except Exception as e:
@@ -195,12 +201,14 @@ class RegistrationBot:
                                 registration_id, reuse_rental_id, reuse_phone,
                             )
                         else:
+                            _fc2 = website_config.get("form_config") or {}
+                            preferred_operator = (custom_data or {}).get("operator") or _fc2.get("preferred_operator") or "any"
                             logger.info(
-                                "[reg-%d] Renting phone number (country=%s)...",
-                                registration_id, phone_country,
+                                "[reg-%d] Renting phone number (country=%s, operator=%s)...",
+                                registration_id, phone_country, preferred_operator,
                             )
                             try:
-                                num = await self.fivesim.rent_number(country=phone_country)
+                                num = await self.fivesim.rent_number(country=phone_country, operator=preferred_operator)
                                 sms_provider = "5sim"
                             except Exception as e5:
                                 logger.warning(
@@ -390,8 +398,8 @@ class RegistrationBot:
 
                     # ── Step 3e: Detect & solve CAPTCHA ──
                     captcha_cfg = form_cfg.get("captcha_settings") or {}
-                    captcha_type = captcha_cfg.get("type", "").lower()
-                    captcha_sitekey = captcha_cfg.get("sitekey", "")
+                    captcha_type = (captcha_cfg.get("type") or captcha_cfg.get("captcha_type") or "").lower()
+                    captcha_sitekey = captcha_cfg.get("sitekey") or captcha_cfg.get("site_key") or ""
 
                     # Auto-detect CAPTCHA from page if not configured
                     if (not captcha_type or not captcha_sitekey) and self._capsolver:
@@ -429,20 +437,24 @@ class RegistrationBot:
 
                         elif captcha_type == "turnstile":
                             logger.info(
-                                "[reg-%d] Pre-solving Cloudflare Turnstile (key=%s)...",
-                                registration_id, captcha_sitekey[:20],
+                                "[reg-%d] Waiting for Turnstile auto-solve (Bright Data residential)...",
+                                registration_id,
                             )
-                            token = await asyncio.to_thread(
-                                self._capsolver.solve_turnstile,
-                                website_url=url,
-                                website_key=captcha_sitekey,
-                            )
-                            if token:
-                                await self._inject_turnstile_token(page, token, registration_id)
-                                captcha_solved = True
-                                result["steps_completed"].append("captcha_solved_turnstile")
-                            else:
-                                logger.warning("[reg-%d] Turnstile solve failed", registration_id)
+                            for _tw in range(30):
+                                has_token = await page.evaluate("""() => {
+                                    const inp = document.querySelector('input[name="cf-turnstile-response"]');
+                                    return inp && inp.value && inp.value.length > 10;
+                                }""")
+                                if has_token:
+                                    logger.info("[reg-%d] Turnstile auto-solved (%ds)", registration_id, _tw)
+                                    captcha_solved = True
+                                    result["steps_completed"].append("captcha_solved_turnstile")
+                                    break
+                                await asyncio.sleep(1)
+                            if not captcha_solved:
+                                raise RuntimeError(
+                                    f"Turnstile did not auto-solve in 30s — retry with new IP"
+                                )
 
                     # ── Step 4: Fill fields + submit ──
                     steps = form_cfg.get("steps", [])
@@ -461,6 +473,12 @@ class RegistrationBot:
                         # Screenshot before step
                         await session.screenshot(f"before_step_{step_idx}")
 
+                        # Solve Turnstile before phone OTP step (must be solved before Send OTP click)
+                        if step.get("inline_phone_otp") and captcha_type == "turnstile" and captcha_sitekey and self._capsolver:
+                            await self._resolve_turnstile_if_needed(
+                                page, url, captcha_sitekey, registration_id, step_idx, result
+                            )
+
                         await self._execute_step(page, step, step_idx, reg_data, registration_id)
 
                         # Screenshot after step
@@ -470,7 +488,7 @@ class RegistrationBot:
                         inline_email = step.get("inline_email_otp")
                         if inline_email and inbox_id:
                             logger.info("[reg-%d] Step %d: inline email OTP — waiting for code...", registration_id, step_idx)
-                            otp = await self._get_email_otp_with_tracking(inbox_id, error_handler)
+                            otp = await self._get_email_otp_with_tracking(inbox_id, error_handler, email_provider=email_provider_name)
                             if otp:
                                 logger.info("[reg-%d] Step %d: inline email OTP received: %s", registration_id, step_idx, otp)
                                 otp_field_sel = inline_email.get("otp_field", "")
@@ -528,9 +546,12 @@ class RegistrationBot:
                         )
 
                         # Check page state after each step
-                        step_check = await error_handler.check_page_state(
-                            session, step=f"step_{step_idx}_submit"
-                        )
+                        try:
+                            step_check = await error_handler.check_page_state(
+                                session, step=f"step_{step_idx}_submit"
+                            )
+                        except Exception:
+                            step_check = None
                         if step_check is not None:
                             if step_check.captcha_detected and self._capsolver:
                                 logger.info(
@@ -618,20 +639,19 @@ class RegistrationBot:
 
                         elif captcha_type == "turnstile":
                             logger.info(
-                                "[reg-%d] Solving Turnstile post-submit (key=%s)...",
-                                registration_id, captcha_sitekey[:20],
+                                "[reg-%d] Waiting for Turnstile auto-solve post-submit...",
+                                registration_id,
                             )
-                            token = await asyncio.to_thread(
-                                self._capsolver.solve_turnstile,
-                                website_url=url,
-                                website_key=captcha_sitekey,
-                            )
-                            if token:
-                                await self._inject_turnstile_token(page, token, registration_id)
-                                captcha_solved = True
-                                result["steps_completed"].append("captcha_solved_turnstile")
-                            else:
-                                logger.warning("[reg-%d] Turnstile solve failed", registration_id)
+                            for _tw in range(60):
+                                has_tok = await page.evaluate("""() => {
+                                    const inp = document.querySelector('input[name="cf-turnstile-response"]');
+                                    return inp && inp.value && inp.value.length > 10;
+                                }""")
+                                if has_tok:
+                                    captcha_solved = True
+                                    result["steps_completed"].append("captcha_solved_turnstile")
+                                    break
+                                await asyncio.sleep(1)
 
                         if captcha_solved:
                             logger.info("[reg-%d] CAPTCHA solved, re-submitting form...", registration_id)
@@ -649,11 +669,11 @@ class RegistrationBot:
                                         logger.warning("[reg-%d] Re-submit failed: %s", registration_id, resubmit_exc)
                             await session.screenshot("after_captcha_solve")
 
-                    # ── Step 5: Email OTP ──
+                    # ── Step 5: Email OTP (skip if already verified inline) ──
                     otp_settings = form_cfg.get("otp_settings") or {}
-                    if requires_email_otp and inbox_id:
+                    if requires_email_otp and inbox_id and not result.get("email_otp_verified"):
                         logger.info("[reg-%d] Waiting for email OTP...", registration_id)
-                        otp = await self._get_email_otp_with_tracking(inbox_id, error_handler)
+                        otp = await self._get_email_otp_with_tracking(inbox_id, error_handler, email_provider=email_provider_name)
                         if otp:
                             logger.info("[reg-%d] Email OTP received: %s", registration_id, otp)
                             await self._enter_otp(
@@ -679,8 +699,8 @@ class RegistrationBot:
                             result["error_context"] = ctx.to_dict()
                             await session.screenshot("email_otp_timeout")
 
-                    # ── Step 6: Mobile OTP ──
-                    if requires_mobile_otp and sms_order_id:
+                    # ── Step 6: Mobile OTP (skip if already verified inline) ──
+                    if requires_mobile_otp and sms_order_id and not result.get("mobile_otp_verified"):
                         logger.info("[reg-%d] Waiting for mobile OTP...", registration_id)
                         sms_skip_count = int((custom_data or {}).get("reuse_otp_count", 0) or 0)
                         sms_known_otp = (custom_data or {}).get("reuse_last_otp") or None
@@ -720,20 +740,39 @@ class RegistrationBot:
                             "[reg-%d] Checking success indicator: %s",
                             registration_id, success["selector"],
                         )
+                        success_found = False
+                        text_contains = (success.get("text_contains") or "").lower()
                         try:
                             await page.wait_for_selector(
                                 success["selector"], timeout=ELEMENT_TIMEOUT
                             )
+                            if text_contains:
+                                body_text = await page.evaluate("document.body.innerText")  # type: ignore[union-attr]
+                                success_found = text_contains in body_text.lower()
+                            else:
+                                success_found = True
+                        except Exception:
+                            # Page may have navigated — check URL for success text
+                            try:
+                                cur = page.url or ""
+                                if text_contains and text_contains in cur.lower():
+                                    success_found = True
+                            except Exception:
+                                pass
+                        if success_found:
                             result["status"] = "completed"
                             result["steps_completed"].append("success_confirmed")
                             logger.info("[reg-%d] Success indicator found!", registration_id)
-                        except Exception:
+                        else:
                             logger.warning(
                                 "[reg-%d] Success indicator not found: %s",
                                 registration_id, success["selector"],
                             )
-                            result["screenshot"] = await session.screenshot("no_success")
-                            result["html_snapshot"] = await session.html_snapshot("no_success")
+                            try:
+                                result["screenshot"] = await session.screenshot("no_success")
+                                result["html_snapshot"] = await session.html_snapshot("no_success")
+                            except Exception:
+                                pass
                     else:
                         if not result["error"]:
                             result["status"] = "completed"
@@ -792,7 +831,7 @@ class RegistrationBot:
             result["error_context"] = ctx.to_dict()
         finally:
             reuse_rental_id = (custom_data or {}).get("reuse_rental_id") if custom_data else None
-            await self._cleanup_providers(inbox_id, sms_order_id, sms_provider, result, skip_sms_release=bool(reuse_rental_id))
+            await self._cleanup_providers(inbox_id, sms_order_id, sms_provider, result, skip_sms_release=bool(reuse_rental_id), email_provider=email_provider_name)
 
         elapsed_ms = int((time.monotonic() - start_time) * 1000)
         logger.info(
@@ -1034,24 +1073,36 @@ class RegistrationBot:
         logger.info("[reg-%d] Injecting Turnstile token (%d chars)", reg_id, len(token))
         await page.evaluate(
             """(token) => {
-                // Set the cf-turnstile-response hidden input(s)
-                document.querySelectorAll('input[name="cf-turnstile-response"]')
-                    .forEach(el => { el.value = token; });
-                // Call turnstile callback if available
-                if (window.turnstile) {
+                // Set the hidden input with React-compatible setter
+                const inputs = document.querySelectorAll('input[name="cf-turnstile-response"]');
+                const nativeSetter = Object.getOwnPropertyDescriptor(
+                    window.HTMLInputElement.prototype, 'value'
+                ).set;
+                inputs.forEach(el => {
+                    nativeSetter.call(el, token);
+                    el.dispatchEvent(new Event('input', {bubbles: true}));
+                    el.dispatchEvent(new Event('change', {bubbles: true}));
+                });
+
+                // Invoke data-callback on Turnstile widget elements
+                document.querySelectorAll('.cf-turnstile, [data-sitekey]').forEach(w => {
+                    const cbName = w.getAttribute('data-callback');
+                    if (cbName && typeof window[cbName] === 'function') {
+                        window[cbName](token);
+                    }
+                });
+
+                // Trigger internal Turnstile callbacks via widget map
+                if (window.turnstile && window.turnstile._widgets) {
                     try {
-                        let widgets = document.querySelectorAll('.cf-turnstile');
-                        widgets.forEach(w => {
-                            let wid = w.getAttribute('data-widget-id');
-                            if (wid) {
-                                try { window.turnstile.getResponse(wid); } catch(e) {}
-                            }
+                        Object.values(window.turnstile._widgets).forEach(w => {
+                            if (w && typeof w.callback === 'function') w.callback(token);
                         });
                     } catch(e) {}
                 }
-                // Dispatch change event on the hidden input
-                document.querySelectorAll('input[name="cf-turnstile-response"]')
-                    .forEach(el => { el.dispatchEvent(new Event('change', {bubbles: true})); });
+
+                // Fire a custom event that React Turnstile components listen to
+                window.dispatchEvent(new CustomEvent('turnstile-callback', {detail: {token}}));
             }""",
             token,
         )
@@ -1066,27 +1117,20 @@ class RegistrationBot:
         step_idx: int,
         result: dict,
     ) -> None:
-        """Re-solve Turnstile if it has reset (e.g. after email OTP verification)."""
-        body_text = await page.evaluate("() => document.body.textContent")  # type: ignore[union-attr]
-        if "exitosa" in body_text or "Success" in body_text:
-            logger.info("[reg-%d] Step %d: Turnstile still solved", reg_id, step_idx)
-            return
+        """Wait for Turnstile to auto-solve on Bright Data residential IP."""
+        logger.info("[reg-%d] Step %d: Waiting for Turnstile auto-solve...", reg_id, step_idx)
+        for i in range(30):
+            has_token = await page.evaluate("""() => {
+                const inp = document.querySelector('input[name="cf-turnstile-response"]');
+                return inp && inp.value && inp.value.length > 10;
+            }""")
+            if has_token:
+                logger.info("[reg-%d] Step %d: Turnstile auto-solved (%ds)", reg_id, step_idx, i)
+                result["steps_completed"].append(f"turnstile_auto_solved_step_{step_idx}")
+                return
+            await asyncio.sleep(1)
 
-        logger.info(
-            "[reg-%d] Step %d: Turnstile reset detected — re-solving via CapSolver...",
-            reg_id, step_idx,
-        )
-        token = await asyncio.to_thread(
-            self._capsolver.solve_turnstile,
-            website_url=url,
-            website_key=sitekey,
-        )
-        if token:
-            await self._inject_turnstile_token(page, token, reg_id)
-            result["steps_completed"].append(f"turnstile_re_solved_step_{step_idx}")
-            logger.info("[reg-%d] Step %d: Turnstile re-solved", reg_id, step_idx)
-        else:
-            logger.warning("[reg-%d] Step %d: Turnstile re-solve failed", reg_id, step_idx)
+        raise RuntimeError(f"Turnstile did not auto-solve in 30s at step {step_idx}")
 
     async def _change_country_code_dropdown(
         self,
@@ -1276,17 +1320,28 @@ class RegistrationBot:
                     )
                 await locator.click(timeout=30_000)
                 wait_ms = step.get("wait_after_submit_ms", 3000)
-                await page.wait_for_timeout(wait_ms)  # type: ignore[union-attr]
+                try:
+                    await page.wait_for_timeout(wait_ms)  # type: ignore[union-attr]
+                    cur_url = await page.evaluate("window.location.href")  # type: ignore[union-attr]
+                except Exception:
+                    cur_url = "(page navigated — redirect likely)"
                 logger.info(
                     "[reg-%d] Step %d: submit clicked, waited %dms, url=%s",
-                    registration_id, step_idx, wait_ms, await page.evaluate("window.location.href"),  # type: ignore[union-attr]
+                    registration_id, step_idx, wait_ms, cur_url,
                 )
             except Exception as exc:
-                logger.error(
-                    "[reg-%d] Step %d: submit click failed (selector=%s): %s",
-                    registration_id, step_idx, submit_sel, exc,
-                )
-                raise
+                err_str = str(exc)
+                if "Execution context was destroyed" in err_str or "navigation" in err_str.lower():
+                    logger.info(
+                        "[reg-%d] Step %d: page navigated after submit — likely success",
+                        registration_id, step_idx,
+                    )
+                else:
+                    logger.error(
+                        "[reg-%d] Step %d: submit click failed (selector=%s): %s",
+                        registration_id, step_idx, submit_sel, exc,
+                    )
+                    raise
         elif submit and submit.get("selector"):
             logger.warning(
                 "[reg-%d] Step %d: skipping submit — no fields filled (0/%d)",
@@ -1331,19 +1386,22 @@ class RegistrationBot:
         self,
         inbox_id: str,
         error_handler: ErrorHandler,
+        email_provider: str = "mailslurp",
     ) -> str | None:
         """Poll for email OTP with timeout tracking."""
         tracker = OTPTimeoutDetector(max_wait_seconds=120.0)
         tracker.start_polling()
-        otp = await self.mailslurp.get_otp(inbox_id=inbox_id)
+        email_svc = self.mailinator if email_provider == "mailinator" else self.mailslurp
+        otp = await email_svc.get_otp(inbox_id=inbox_id)
         if not otp:
             timeout_result = tracker.build_timeout_result(
                 otp_type="email",
-                provider="mailslurp",
+                provider=email_provider,
                 inbox_id=inbox_id,
             )
             logger.warning(
-                "Email OTP timeout: waited %.1fs, %d polls",
+                "Email OTP timeout (%s): waited %.1fs, %d polls",
+                email_provider,
                 timeout_result.wait_seconds,
                 timeout_result.poll_attempts,
             )
@@ -1392,11 +1450,13 @@ class RegistrationBot:
         sms_provider: str | None,
         result: dict,
         skip_sms_release: bool = False,
+        email_provider: str = "mailslurp",
     ) -> None:
         """Release provisioned email inboxes and phone numbers."""
         if inbox_id:
             try:
-                await self.mailslurp.delete_inbox(inbox_id)
+                email_svc = self.mailinator if email_provider == "mailinator" else self.mailslurp
+                await email_svc.delete_inbox(inbox_id)
             except Exception:
                 logger.debug("Failed to delete inbox %s", inbox_id)
         if sms_order_id and not skip_sms_release:
