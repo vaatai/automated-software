@@ -396,8 +396,8 @@ class RegistrationBot:
 
                     # ── Step 3e: Detect & solve CAPTCHA ──
                     captcha_cfg = form_cfg.get("captcha_settings") or {}
-                    captcha_type = captcha_cfg.get("type", "").lower()
-                    captcha_sitekey = captcha_cfg.get("sitekey", "")
+                    captcha_type = (captcha_cfg.get("type") or captcha_cfg.get("captcha_type") or "").lower()
+                    captcha_sitekey = captcha_cfg.get("sitekey") or captcha_cfg.get("site_key") or ""
 
                     # Auto-detect CAPTCHA from page if not configured
                     if (not captcha_type or not captcha_sitekey) and self._capsolver:
@@ -1078,14 +1078,9 @@ class RegistrationBot:
         step_idx: int,
         result: dict,
     ) -> None:
-        """Re-solve Turnstile if it has reset (e.g. after email OTP verification)."""
-        body_text = await page.evaluate("() => document.body.textContent")  # type: ignore[union-attr]
-        if "exitosa" in body_text or "Success" in body_text:
-            logger.info("[reg-%d] Step %d: Turnstile still solved", reg_id, step_idx)
-            return
-
+        """Re-solve Turnstile (it resets after email OTP verification)."""
         logger.info(
-            "[reg-%d] Step %d: Turnstile reset detected — re-solving via CapSolver...",
+            "[reg-%d] Step %d: Solving Turnstile via CapSolver...",
             reg_id, step_idx,
         )
         token = await asyncio.to_thread(
