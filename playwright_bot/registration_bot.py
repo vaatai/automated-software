@@ -201,12 +201,14 @@ class RegistrationBot:
                                 registration_id, reuse_rental_id, reuse_phone,
                             )
                         else:
+                            _fc2 = website_config.get("form_config") or {}
+                            preferred_operator = (custom_data or {}).get("operator") or _fc2.get("preferred_operator") or "any"
                             logger.info(
-                                "[reg-%d] Renting phone number (country=%s)...",
-                                registration_id, phone_country,
+                                "[reg-%d] Renting phone number (country=%s, operator=%s)...",
+                                registration_id, phone_country, preferred_operator,
                             )
                             try:
-                                num = await self.fivesim.rent_number(country=phone_country)
+                                num = await self.fivesim.rent_number(country=phone_country, operator=preferred_operator)
                                 sms_provider = "5sim"
                             except Exception as e5:
                                 logger.warning(
