@@ -69,6 +69,43 @@ class FiveSimService(BaseOTPService, SMSProviderAdapter):
         operator: str = "any",
     ) -> RentalResult:
         api_country = ISO_TO_FIVESIM.get(country.upper(), country.lower()) if country != "any" else "any"
+        # Try requested service first, fall back to "other" if "any" fails
+        services_to_try = [service]
+        if service == "any":
+            services_to_try.append("other")
+        last_exc: Exception | None = None
+        data: dict | None = None
+        for svc in services_to_try:
+            try:
+                data = await self._buy_activation(api_country, operator, svc)
+                service = svc
+                break
+            except (NumberUnavailableError, ProviderError) as exc:
+                last_exc = exc
+                logger.debug("5SIM %s/%s failed: %s, trying next service", api_country, svc, exc)
+        if data is None:
+            if last_exc:
+                raise last_exc
+            raise NumberUnavailableError(self.provider_name, country, service)
+
+        if data.get("status") == "no free phones":
+            raise NumberUnavailableError(self.provider_name, country, service)
+
+        logger.info(
+            "5SIM rented number: %s (order %s)", data.get("phone"), data.get("id")
+        )
+        return RentalResult(
+            order_id=str(data["id"]),
+            phone_number=data["phone"],
+            provider=self.provider_name,
+            country=country,
+            service=service,
+        )
+
+    async def _buy_activation(
+        self, api_country: str, operator: str, service: str
+    ) -> dict:
+        """Make a single buy/activation API call."""
         async with httpx.AsyncClient() as client:
             try:
                 resp = await client.get(
@@ -79,28 +116,13 @@ class FiveSimService(BaseOTPService, SMSProviderAdapter):
                 resp.raise_for_status()
             except httpx.HTTPStatusError as exc:
                 if exc.response.status_code == 404:
-                    raise NumberUnavailableError(self.provider_name, country, service)
+                    raise NumberUnavailableError(self.provider_name, api_country, service)
                 raise ProviderError(
                     self.provider_name,
                     f"HTTP {exc.response.status_code}",
                     exc.response.status_code,
                 )
-
-            data = resp.json()
-
-            if data.get("status") == "no free phones":
-                raise NumberUnavailableError(self.provider_name, country, service)
-
-            logger.info(
-                "5SIM rented number: %s (order %s)", data.get("phone"), data.get("id")
-            )
-            return RentalResult(
-                order_id=str(data["id"]),
-                phone_number=data["phone"],
-                provider=self.provider_name,
-                country=country,
-                service=service,
-            )
+            return resp.json()
 
     async def poll_for_otp(
         self,

@@ -57,6 +57,10 @@ class FormFieldSelector(BaseModel):
     country_code: str | None = Field(
         default=None, description="Country code to strip (e.g. '91' for India)"
     )
+    country_code_selector: str | None = Field(
+        default=None,
+        description="CSS selector for custom country code dropdown trigger button",
+    )
 
 
 class SubmitButtonSelector(BaseModel):
