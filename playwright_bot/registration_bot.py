@@ -484,6 +484,11 @@ class RegistrationBot:
                                 result["email_otp_verified"] = True
                                 result["steps_completed"].append("inline_email_otp_verified")
                                 await session.screenshot(f"after_inline_email_otp_{step_idx}")
+                                # Re-solve Turnstile if it resets after email OTP
+                                if captcha_type == "turnstile" and captcha_sitekey and self._capsolver:
+                                    await self._resolve_turnstile_if_needed(
+                                        page, url, captcha_sitekey, registration_id, step_idx, result
+                                    )
                             else:
                                 logger.warning("[reg-%d] Step %d: inline email OTP timed out", registration_id, step_idx)
                                 result["error"] = "Inline email OTP not received within timeout"
@@ -1052,6 +1057,93 @@ class RegistrationBot:
         )
         logger.info("[reg-%d] Turnstile token injected", reg_id)
 
+    async def _resolve_turnstile_if_needed(
+        self,
+        page: object,
+        url: str,
+        sitekey: str,
+        reg_id: int,
+        step_idx: int,
+        result: dict,
+    ) -> None:
+        """Re-solve Turnstile if it has reset (e.g. after email OTP verification)."""
+        body_text = await page.evaluate("() => document.body.textContent")  # type: ignore[union-attr]
+        if "exitosa" in body_text or "Success" in body_text:
+            logger.info("[reg-%d] Step %d: Turnstile still solved", reg_id, step_idx)
+            return
+
+        logger.info(
+            "[reg-%d] Step %d: Turnstile reset detected — re-solving via CapSolver...",
+            reg_id, step_idx,
+        )
+        token = await asyncio.to_thread(
+            self._capsolver.solve_turnstile,
+            website_url=url,
+            website_key=sitekey,
+        )
+        if token:
+            await self._inject_turnstile_token(page, token, reg_id)
+            result["steps_completed"].append(f"turnstile_re_solved_step_{step_idx}")
+            logger.info("[reg-%d] Step %d: Turnstile re-solved", reg_id, step_idx)
+        else:
+            logger.warning("[reg-%d] Step %d: Turnstile re-solve failed", reg_id, step_idx)
+
+    async def _change_country_code_dropdown(
+        self,
+        page: object,
+        cc_selector: str,
+        target_code: str,
+        reg_id: int,
+        step_idx: int,
+    ) -> None:
+        """Change a custom (non-select) country code dropdown to the target code.
+
+        Handles React button-based dropdowns like auth.redrob.io where the
+        country picker is a <button> that opens a list of options.
+        """
+        current_btn = page.locator(cc_selector).first  # type: ignore[union-attr]
+        if await current_btn.count() == 0:  # type: ignore[union-attr]
+            logger.warning(
+                "[reg-%d] Step %d: country code selector '%s' not found",
+                reg_id, step_idx, cc_selector,
+            )
+            return
+
+        current_text = await current_btn.text_content()  # type: ignore[union-attr]
+        if f"+{target_code}" in (current_text or ""):
+            logger.info("[reg-%d] Step %d: country code already +%s", reg_id, step_idx, target_code)
+            return
+
+        logger.info(
+            "[reg-%d] Step %d: changing country code from '%s' to +%s",
+            reg_id, step_idx, (current_text or "").strip(), target_code,
+        )
+        await current_btn.click()  # type: ignore[union-attr]
+        await page.wait_for_timeout(1500)  # type: ignore[union-attr]
+
+        # Try JS click on dropdown option matching target code
+        clicked = await page.evaluate(  # type: ignore[union-attr]
+            """(code) => {
+                const items = document.querySelectorAll('button, li, div, span');
+                for (const el of items) {
+                    const text = el.textContent.trim();
+                    if ((text === '+' + code || text.startsWith('+' + code + ' '))
+                        && text.length <= 20) {
+                        el.click();
+                        return text;
+                    }
+                }
+                return null;
+            }""",
+            target_code,
+        )
+        if clicked:
+            logger.info("[reg-%d] Step %d: selected country code: %s", reg_id, step_idx, clicked)
+        else:
+            logger.warning("[reg-%d] Step %d: could not find +%s option in dropdown", reg_id, step_idx, target_code)
+
+        await page.wait_for_timeout(1000)  # type: ignore[union-attr]
+
     # ── step execution ─────────────────────────────────────
 
     async def _execute_step(
@@ -1114,6 +1206,12 @@ class RegistrationBot:
                 country_code = cfg.get("country_code") or "91"
                 if val.startswith(country_code):
                     val = val[len(country_code):]
+                # Change the country code dropdown if a selector is provided
+                cc_selector = cfg.get("country_code_selector")
+                if cc_selector and country_code:
+                    await self._change_country_code_dropdown(
+                        page, cc_selector, country_code, registration_id, step_idx
+                    )
             try:
                 logger.info(
                     "[reg-%d] Step %d: filling field '%s' (selector=%s, value=%s)",
@@ -1128,6 +1226,13 @@ class RegistrationBot:
                     await page.select_option(sel, value=str(val))  # type: ignore[union-attr]
                 elif field_type == "radio":
                     await page.click(sel)  # type: ignore[union-attr]
+                elif field_type == "tel":
+                    # For tel inputs, use keyboard typing for React compatibility
+                    await page.click(sel)  # type: ignore[union-attr]
+                    await page.wait_for_timeout(200)  # type: ignore[union-attr]
+                    await page.keyboard.press("Control+a")  # type: ignore[union-attr]
+                    await page.wait_for_timeout(100)  # type: ignore[union-attr]
+                    await page.keyboard.type(str(val), delay=40)  # type: ignore[union-attr]
                 else:
                     await page.click(sel)  # type: ignore[union-attr]
                     await page.wait_for_timeout(random.randint(100, 300))  # type: ignore[union-attr]
