@@ -429,9 +429,9 @@ async def proxy_health(db: AsyncSession = Depends(get_db)):
     result = await db.execute(text("""
         SELECT
             COUNT(*) AS total,
-            COUNT(*) FILTER (WHERE status = 'active' AND deleted_at IS NULL) AS active,
-            COUNT(*) FILTER (WHERE status = 'banned') AS banned,
-            COUNT(*) FILTER (WHERE status = 'rate_limited') AS rate_limited,
+            COUNT(*) FILTER (WHERE status = 'ACTIVE' AND deleted_at IS NULL) AS active,
+            COUNT(*) FILTER (WHERE status = 'BANNED') AS banned,
+            COUNT(*) FILTER (WHERE status = 'RATE_LIMITED') AS rate_limited,
             ROUND(AVG(success_count)::numeric, 1) AS avg_success,
             ROUND(AVG(fail_count)::numeric, 1) AS avg_fail
         FROM proxies
