@@ -544,9 +544,12 @@ class RegistrationBot:
                         )
 
                         # Check page state after each step
-                        step_check = await error_handler.check_page_state(
-                            session, step=f"step_{step_idx}_submit"
-                        )
+                        try:
+                            step_check = await error_handler.check_page_state(
+                                session, step=f"step_{step_idx}_submit"
+                            )
+                        except Exception:
+                            step_check = None
                         if step_check is not None:
                             if step_check.captcha_detected and self._capsolver:
                                 logger.info(
@@ -735,20 +738,39 @@ class RegistrationBot:
                             "[reg-%d] Checking success indicator: %s",
                             registration_id, success["selector"],
                         )
+                        success_found = False
+                        text_contains = (success.get("text_contains") or "").lower()
                         try:
                             await page.wait_for_selector(
                                 success["selector"], timeout=ELEMENT_TIMEOUT
                             )
+                            if text_contains:
+                                body_text = await page.evaluate("document.body.innerText")  # type: ignore[union-attr]
+                                success_found = text_contains in body_text.lower()
+                            else:
+                                success_found = True
+                        except Exception:
+                            # Page may have navigated — check URL for success text
+                            try:
+                                cur = page.url or ""
+                                if text_contains and text_contains in cur.lower():
+                                    success_found = True
+                            except Exception:
+                                pass
+                        if success_found:
                             result["status"] = "completed"
                             result["steps_completed"].append("success_confirmed")
                             logger.info("[reg-%d] Success indicator found!", registration_id)
-                        except Exception:
+                        else:
                             logger.warning(
                                 "[reg-%d] Success indicator not found: %s",
                                 registration_id, success["selector"],
                             )
-                            result["screenshot"] = await session.screenshot("no_success")
-                            result["html_snapshot"] = await session.html_snapshot("no_success")
+                            try:
+                                result["screenshot"] = await session.screenshot("no_success")
+                                result["html_snapshot"] = await session.html_snapshot("no_success")
+                            except Exception:
+                                pass
                     else:
                         if not result["error"]:
                             result["status"] = "completed"
@@ -1296,17 +1318,28 @@ class RegistrationBot:
                     )
                 await locator.click(timeout=30_000)
                 wait_ms = step.get("wait_after_submit_ms", 3000)
-                await page.wait_for_timeout(wait_ms)  # type: ignore[union-attr]
+                try:
+                    await page.wait_for_timeout(wait_ms)  # type: ignore[union-attr]
+                    cur_url = await page.evaluate("window.location.href")  # type: ignore[union-attr]
+                except Exception:
+                    cur_url = "(page navigated — redirect likely)"
                 logger.info(
                     "[reg-%d] Step %d: submit clicked, waited %dms, url=%s",
-                    registration_id, step_idx, wait_ms, await page.evaluate("window.location.href"),  # type: ignore[union-attr]
+                    registration_id, step_idx, wait_ms, cur_url,
                 )
             except Exception as exc:
-                logger.error(
-                    "[reg-%d] Step %d: submit click failed (selector=%s): %s",
-                    registration_id, step_idx, submit_sel, exc,
-                )
-                raise
+                err_str = str(exc)
+                if "Execution context was destroyed" in err_str or "navigation" in err_str.lower():
+                    logger.info(
+                        "[reg-%d] Step %d: page navigated after submit — likely success",
+                        registration_id, step_idx,
+                    )
+                else:
+                    logger.error(
+                        "[reg-%d] Step %d: submit click failed (selector=%s): %s",
+                        registration_id, step_idx, submit_sel, exc,
+                    )
+                    raise
         elif submit and submit.get("selector"):
             logger.warning(
                 "[reg-%d] Step %d: skipping submit — no fields filled (0/%d)",
