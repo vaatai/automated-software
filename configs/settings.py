@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     APP_VERSION: str = "0.1.0"
     DEBUG: bool = False
     SECRET_KEY: str = "change-me-to-a-random-secret"
-    MAX_CONCURRENT_WORKERS: int = 5
+    MAX_CONCURRENT_WORKERS: int = 3
     DEFAULT_DAILY_LIMIT: int = 100
     OTP_POLL_TIMEOUT_SECONDS: int = 120
     OTP_POLL_INTERVAL_SECONDS: int = 5
@@ -40,8 +40,9 @@ class Settings(BaseSettings):
     MAILSLURP_WEBHOOK_URL: str = ""
     MAILSLURP_INBOX_EXPIRY_MS: int = 600_000
 
-    # --- CAPTCHA Solving (CapSolver) ---
+    # --- CAPTCHA Solving ---
     CAPSOLVER_API_KEY: str = ""
+    ANTICAPTCHA_API_KEY: str = ""
 
     # --- Bright Data Scraping Browser ---
     BRIGHT_DATA_BROWSER_WSS: str = ""

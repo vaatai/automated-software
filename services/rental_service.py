@@ -79,6 +79,9 @@ class RentalService:
         result = await self.db.execute(q)
         return result.scalar_one_or_none()
 
+    # Countries where PVAPins has better inventory than 5SIM
+    PVAPINS_PRIMARY_COUNTRIES = frozenset({"IN", "PK", "BD", "NP", "LK"})
+
     async def rent_number(
         self,
         country: str = "US",
@@ -87,17 +90,26 @@ class RentalService:
     ) -> RentalNumber:
         """Rent a new phone number for the specified duration.
 
-        Tries 5SIM → PVAPins → SMS-Activate in order.
+        Provider order is country-aware:
+        - India/South-Asia: PVAPins → 5SIM → SMS-Activate
+        - All others: 5SIM → PVAPins → SMS-Activate
         """
         rental_result = None
         provider_name = None
         errors: list[str] = []
 
-        providers = [
-            ("5sim", self.fivesim),
-            ("pvapins", self.pvapins),
-            ("sms-activate", self.smsactivate),
-        ]
+        if country.upper() in self.PVAPINS_PRIMARY_COUNTRIES:
+            providers = [
+                ("pvapins", self.pvapins),
+                ("5sim", self.fivesim),
+                ("sms-activate", self.smsactivate),
+            ]
+        else:
+            providers = [
+                ("5sim", self.fivesim),
+                ("pvapins", self.pvapins),
+                ("sms-activate", self.smsactivate),
+            ]
         for name, provider in providers:
             try:
                 rental_result = await provider.rent_number(country=country)
