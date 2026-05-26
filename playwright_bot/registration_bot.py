@@ -440,7 +440,7 @@ class RegistrationBot:
                                 "[reg-%d] Waiting for Turnstile auto-solve (Bright Data residential)...",
                                 registration_id,
                             )
-                            for _tw in range(60):
+                            for _tw in range(30):
                                 has_token = await page.evaluate("""() => {
                                     const inp = document.querySelector('input[name="cf-turnstile-response"]');
                                     return inp && inp.value && inp.value.length > 10;
@@ -452,7 +452,9 @@ class RegistrationBot:
                                     break
                                 await asyncio.sleep(1)
                             if not captcha_solved:
-                                logger.warning("[reg-%d] Turnstile did not auto-solve in 60s", registration_id)
+                                raise RuntimeError(
+                                    f"Turnstile did not auto-solve in 30s — retry with new IP"
+                                )
 
                     # ── Step 4: Fill fields + submit ──
                     steps = form_cfg.get("steps", [])
@@ -1117,7 +1119,7 @@ class RegistrationBot:
     ) -> None:
         """Wait for Turnstile to auto-solve on Bright Data residential IP."""
         logger.info("[reg-%d] Step %d: Waiting for Turnstile auto-solve...", reg_id, step_idx)
-        for i in range(60):
+        for i in range(30):
             has_token = await page.evaluate("""() => {
                 const inp = document.querySelector('input[name="cf-turnstile-response"]');
                 return inp && inp.value && inp.value.length > 10;
@@ -1128,7 +1130,7 @@ class RegistrationBot:
                 return
             await asyncio.sleep(1)
 
-        logger.warning("[reg-%d] Step %d: Turnstile did not auto-solve in 60s", reg_id, step_idx)
+        raise RuntimeError(f"Turnstile did not auto-solve in 30s at step {step_idx}")
 
     async def _change_country_code_dropdown(
         self,
