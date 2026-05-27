@@ -358,22 +358,15 @@ async def provider_status():
         try:
             async with httpx.AsyncClient() as client:
                 resp = await client.get(
-                    f"{s.PVAPINS_BASE_URL}/getBalance",
-                    params={"apikey": s.PVAPINS_API_KEY},
+                    f"{s.PVAPINS_BASE_URL}/get_balance.php",
+                    params={"customer": s.PVAPINS_API_KEY},
                     timeout=10,
                 )
-                if resp.headers.get("content-type", "").startswith("application/json"):
-                    data = resp.json()
-                    providers["pvapins"] = {
-                        "status": "ok",
-                        "balance": data.get("balance", 0),
-                    }
-                else:
-                    providers["pvapins"] = {
-                        "status": "ok",
-                        "balance": "unknown",
-                        "note": "API returned non-JSON (balance check endpoint may have changed)",
-                    }
+                data = resp.json()
+                providers["pvapins"] = {
+                    "status": "ok",
+                    "balance": float(data.get("balance", 0)),
+                }
         except Exception as exc:
             providers["pvapins"] = {"status": "error", "error": str(exc)}
     else:

@@ -111,7 +111,14 @@ class PVAPinsService(BaseOTPService, SMSProviderAdapter):
         Tries multiple app names if service is 'any' or 'opt4'.
         """
         country_name = self._country_name(country)
-        apps_to_try = DEFAULT_APPS if service in ("any", "opt4", "other") else [service]
+        if service not in ("any", "opt4", "other"):
+            apps_to_try = [service]
+        elif country.upper() == "IN":
+            # India: only use generic "Anyother" — service-specific apps
+            # (1xbet1, telegram, etc.) don't receive SMS from arbitrary senders.
+            apps_to_try = ["Anyother"]
+        else:
+            apps_to_try = DEFAULT_APPS
         last_error: str = ""
 
         async with httpx.AsyncClient() as client:
@@ -193,7 +200,7 @@ class PVAPinsService(BaseOTPService, SMSProviderAdapter):
 
         ctx = self._rental_context.get(phone_number, {})
         country_name = ctx.get("country", "India")
-        app = ctx.get("app", "1xbet1")
+        app = ctx.get("app", "Anyother")
 
         async with httpx.AsyncClient() as client:
             while time.monotonic() - start < timeout:
@@ -246,7 +253,7 @@ class PVAPinsService(BaseOTPService, SMSProviderAdapter):
         phone_number = order_id
         ctx = self._rental_context.pop(phone_number, {})
         country_name = ctx.get("country", "India")
-        app = ctx.get("app", "1xbet1")
+        app = ctx.get("app", "Anyother")
 
         if success:
             logger.info("PVAPins number %s completed (auto-finalized by provider)", phone_number)
