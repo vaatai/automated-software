@@ -1,11 +1,13 @@
 """PVAPins SMS OTP provider adapter.
 
-Secondary SMS provider. Provides number rental and SMS polling
-with country/service selection.
+Primary SMS provider for Indian numbers. Provides number rental and
+SMS polling with country/app selection.
 
-API docs: https://pvapins.com/api-documentation
+API docs: https://pvapins.com/api_integrate
+Base URL: https://api.pvapins.com/user/api/
 """
 
+import asyncio
 import logging
 import time
 
@@ -24,9 +26,55 @@ from otp.sms_provider import (
 
 logger = logging.getLogger(__name__)
 
+# Map ISO country codes to PVAPins country names
+ISO_TO_PVAPINS: dict[str, str] = {
+    "IN": "India",
+    "US": "USA",
+    "GB": "UK",
+    "UK": "UK",
+    "RU": "Russia",
+    "ID": "Indonesia",
+    "PK": "Pakistan",
+    "BD": "Bangladesh",
+    "NP": "Nepal",
+    "LK": "Sri Lanka",
+    "BR": "Brazil",
+    "DE": "Germany",
+    "FR": "France",
+    "CA": "Canada",
+    "AU": "Australia",
+    "PH": "Philippines",
+    "KR": "South Korea",
+    "JP": "Japan",
+    "CN": "China",
+    "MX": "Mexico",
+    "NG": "Nigeria",
+    "KE": "Kenya",
+    "ZA": "South Africa",
+    "EG": "Egypt",
+    "TH": "Thailand",
+    "VN": "Vietnam",
+    "MY": "Malaysia",
+    "UA": "Ukraine",
+    "PL": "Poland",
+    "IT": "Italy",
+    "ES": "Spain",
+    "NL": "Netherlands",
+    "SE": "Sweden",
+    "TR": "Turkey",
+    "AR": "Argentina",
+    "CO": "Colombia",
+    "CL": "Chile",
+    "PE": "Peru",
+}
+
+# Default app names to try for generic number rental (cheap, widely available).
+# "Anyother" is a generic catch-all that receives SMS from any sender.
+DEFAULT_APPS = ["Anyother", "1xbet1", "telegram", "whatsapp", "other"]
+
 
 class PVAPinsService(BaseOTPService, SMSProviderAdapter):
-    """Secondary SMS OTP provider via PVAPins.
+    """Primary SMS OTP provider via PVAPins (v2 API).
 
     Implements both the legacy BaseOTPService interface (for backward compat)
     and the new SMSProviderAdapter interface (for OTPManager).
@@ -35,6 +83,8 @@ class PVAPinsService(BaseOTPService, SMSProviderAdapter):
     def __init__(self, api_key: str | None = None):
         self._api_key = api_key or settings.PVAPINS_API_KEY
         self._base_url = settings.PVAPINS_BASE_URL
+        # Track rental context for SMS polling
+        self._rental_context: dict[str, dict[str, str]] = {}
 
     @property
     def provider_name(self) -> str:
@@ -42,61 +92,93 @@ class PVAPinsService(BaseOTPService, SMSProviderAdapter):
 
     @property
     def priority(self) -> int:
-        return 2
+        return 1
+
+    def _country_name(self, iso_code: str) -> str:
+        """Convert ISO country code to PVAPins country name."""
+        return ISO_TO_PVAPINS.get(iso_code.upper(), iso_code)
 
     # ── SMSProviderAdapter interface ───────────────────────
 
     async def rent_number(
         self,
         country: str = "US",
-        service: str = "opt4",
+        service: str = "any",
         operator: str = "any",
     ) -> RentalResult:
-        """Rent a number from PVAPins.
+        """Rent a number from PVAPins v2 API.
 
-        Defaults differ from the abstract interface (``country='US'``,
-        ``service='opt4'``) to match PVAPins API conventions.  When
-        called via ``MobileOTPManager``, kwargs are always explicit.
+        Tries multiple app names if service is 'any' or 'opt4'.
         """
+        country_name = self._country_name(country)
+        apps_to_try = DEFAULT_APPS if service in ("any", "opt4", "other") else [service]
+        last_error: str = ""
+
         async with httpx.AsyncClient() as client:
-            try:
-                resp = await client.get(
-                    f"{self._base_url}/getNumber",
-                    params={
-                        "apikey": self._api_key,
-                        "service": service,
-                        "country": country,
-                    },
-                    timeout=30,
-                )
-                resp.raise_for_status()
-            except httpx.HTTPStatusError as exc:
-                raise ProviderError(
-                    self.provider_name,
-                    f"HTTP {exc.response.status_code}",
-                    exc.response.status_code,
-                )
+            for app in apps_to_try:
+                try:
+                    resp = await client.get(
+                        f"{self._base_url}/get_number.php",
+                        params={
+                            "customer": self._api_key,
+                            "app": app,
+                            "country": country_name,
+                        },
+                        timeout=30,
+                    )
+                    body = resp.text.strip()
 
-            data = resp.json()
+                    if resp.status_code != 200:
+                        last_error = f"HTTP {resp.status_code}"
+                        logger.debug("PVAPins %s/%s: %s", country_name, app, last_error)
+                        continue
 
-            if data.get("error"):
-                error_msg = data["error"]
-                if "no numbers" in error_msg.lower() or "not available" in error_msg.lower():
-                    raise NumberUnavailableError(self.provider_name, country, service)
-                raise ProviderError(self.provider_name, error_msg)
+                    if "not found" in body.lower():
+                        last_error = body
+                        logger.debug("PVAPins %s/%s: %s", country_name, app, body)
+                        continue
 
-            logger.info(
-                "PVAPins rented number: %s (order %s)",
-                data.get("number"),
-                data.get("id"),
-            )
-            return RentalResult(
-                order_id=str(data["id"]),
-                phone_number=data["number"],
-                provider=self.provider_name,
-                country=country,
-                service=service,
-            )
+                    if "no free channels" in body.lower() or "not available" in body.lower():
+                        last_error = body
+                        logger.debug("PVAPins %s/%s: %s", country_name, app, body)
+                        continue
+
+                    if "insufficient" in body.lower() or "balance" in body.lower():
+                        raise ProviderError(self.provider_name, f"Insufficient balance: {body}")
+
+                    # Success — response is the phone number as plain text
+                    phone_number = body
+                    if not phone_number or not phone_number[0].isdigit():
+                        last_error = f"Unexpected response: {body[:100]}"
+                        logger.debug("PVAPins %s/%s: %s", country_name, app, last_error)
+                        continue
+
+                    logger.info("PVAPins rented number: %s (app=%s, country=%s)", phone_number, app, country_name)
+
+                    # Store context for SMS polling (new API needs number+country+app)
+                    self._rental_context[phone_number] = {
+                        "country": country_name,
+                        "app": app,
+                    }
+
+                    return RentalResult(
+                        order_id=phone_number,
+                        phone_number=phone_number,
+                        provider=self.provider_name,
+                        country=country,
+                        service=app,
+                    )
+
+                except httpx.HTTPStatusError as exc:
+                    last_error = f"HTTP {exc.response.status_code}"
+                    logger.debug("PVAPins %s/%s error: %s", country_name, app, last_error)
+                except ProviderError:
+                    raise
+                except Exception as exc:
+                    last_error = str(exc)
+                    logger.debug("PVAPins %s/%s exception: %s", country_name, app, exc)
+
+        raise NumberUnavailableError(self.provider_name, country, service)
 
     async def poll_for_otp(
         self,
@@ -105,68 +187,100 @@ class PVAPinsService(BaseOTPService, SMSProviderAdapter):
         interval: int = 5,
         known_otp: str | None = None,
     ) -> SMSResult:
+        """Poll for OTP using the v2 get_sms.php endpoint."""
         start = time.monotonic()
+        phone_number = order_id
+
+        ctx = self._rental_context.get(phone_number, {})
+        country_name = ctx.get("country", "India")
+        app = ctx.get("app", "1xbet1")
 
         async with httpx.AsyncClient() as client:
             while time.monotonic() - start < timeout:
                 try:
                     resp = await client.get(
-                        f"{self._base_url}/getSMS",
-                        params={"apikey": self._api_key, "id": order_id},
+                        f"{self._base_url}/get_sms.php",
+                        params={
+                            "customer": self._api_key,
+                            "number": phone_number,
+                            "country": country_name,
+                            "app": app,
+                        },
                         timeout=15,
                     )
-                    resp.raise_for_status()
-                    data = resp.json()
+                    body = resp.text.strip()
 
-                    sms_code = data.get("sms")
-                    if sms_code and sms_code != "wait":
-                        raw_text = str(sms_code)
-                        otp = self.extract_otp(raw_text)
+                    # "You have not received any code yet." = still waiting
+                    if "not received" in body.lower() or "wait" in body.lower():
+                        pass  # keep polling
+                    elif body and body[0].isdigit():
+                        # Got OTP — response is the code as plain text
+                        otp = self.extract_otp(body)
                         if otp and otp != known_otp:
-                            logger.info("PVAPins OTP extracted: %s", otp)
+                            logger.info("PVAPins OTP received: %s", otp)
                             return SMSResult(
                                 otp=otp,
-                                raw_message=raw_text,
+                                raw_message=body,
                                 provider=self.provider_name,
                                 order_id=order_id,
                             )
-
-                    if data.get("error"):
-                        logger.warning("PVAPins error: %s", data["error"])
+                    elif "error" in body.lower() or "expired" in body.lower():
+                        logger.warning("PVAPins SMS error: %s", body)
                         return SMSResult(otp=None, provider=self.provider_name, order_id=order_id)
 
-                except httpx.HTTPStatusError as exc:
-                    logger.warning("PVAPins poll error: %s", exc.response.status_code)
+                except Exception as exc:
+                    logger.warning("PVAPins poll error: %s", exc)
 
-                await self.async_sleep(interval)
+                await asyncio.sleep(interval)
 
-        logger.error("PVAPins OTP timed out after %ds", timeout)
+        logger.error("PVAPins OTP timed out after %ds for %s", timeout, phone_number)
         return SMSResult(otp=None, provider=self.provider_name, order_id=order_id)
 
     async def release_number(self, order_id: str, success: bool = False) -> None:
-        status = "complete" if success else "cancel"
+        """Release/reject a number.
+
+        The v2 API has no explicit "complete" endpoint — numbers
+        auto-complete after OTP receipt.  We only call reject.php
+        when the number was *not* used successfully.
+        """
+        phone_number = order_id
+        ctx = self._rental_context.pop(phone_number, {})
+        country_name = ctx.get("country", "India")
+        app = ctx.get("app", "1xbet1")
+
+        if success:
+            logger.info("PVAPins number %s completed (auto-finalized by provider)", phone_number)
+            return
+
         async with httpx.AsyncClient() as client:
             try:
                 await client.get(
-                    f"{self._base_url}/setStatus",
-                    params={"apikey": self._api_key, "id": order_id, "status": status},
+                    f"{self._base_url}/reject.php",
+                    params={
+                        "customer": self._api_key,
+                        "number": phone_number,
+                        "country": country_name,
+                        "app": app,
+                    },
                     timeout=15,
                 )
-                logger.info("PVAPins order %s: %s", order_id, status)
+                logger.info("PVAPins rejected number %s", phone_number)
             except Exception as exc:
                 logger.warning("PVAPins release_number failed: %s", exc)
 
     async def check_balance(self) -> float | None:
+        """Check account balance via get_balance.php."""
         async with httpx.AsyncClient() as client:
             try:
                 resp = await client.get(
-                    f"{self._base_url}/getBalance",
-                    params={"apikey": self._api_key},
+                    f"{self._base_url}/get_balance.php",
+                    params={"customer": self._api_key},
                     timeout=15,
                 )
-                resp.raise_for_status()
-                data = resp.json()
-                return float(data.get("balance", 0))
+                if resp.status_code == 200:
+                    data = resp.json()
+                    return float(data.get("balance", 0))
+                return None
             except Exception:
                 return None
 
