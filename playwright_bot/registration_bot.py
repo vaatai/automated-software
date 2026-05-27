@@ -211,7 +211,8 @@ class RegistrationBot:
 
                     # ── Step 2: Provision phone number ──
                     if requires_mobile_otp:
-                        phone_country = (custom_data or {}).get("phone_country", "US")
+                        _fc_pc = (website_config.get("form_config") or {}).get("phone_country")
+                        phone_country = (custom_data or {}).get("phone_country") or _fc_pc or "US"
                         reuse_rental_id = (custom_data or {}).get("reuse_rental_id")
 
                         if reuse_rental_id:
