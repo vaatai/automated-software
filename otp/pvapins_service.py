@@ -68,8 +68,9 @@ ISO_TO_PVAPINS: dict[str, str] = {
     "PE": "Peru",
 }
 
-# Default app names to try for generic number rental (cheap, widely available)
-DEFAULT_APPS = ["1xbet1", "telegram", "whatsapp", "other"]
+# Default app names to try for generic number rental (cheap, widely available).
+# "Anyother" is a generic catch-all that receives SMS from any sender.
+DEFAULT_APPS = ["Anyother", "1xbet1", "telegram", "whatsapp", "other"]
 
 
 class PVAPinsService(BaseOTPService, SMSProviderAdapter):
