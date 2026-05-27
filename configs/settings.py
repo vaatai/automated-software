@@ -20,7 +20,7 @@ class Settings(BaseSettings):
 
     # --- PVAPins (Secondary SMS OTP) ---
     PVAPINS_API_KEY: str = ""
-    PVAPINS_BASE_URL: str = "https://pvapins.com/api"
+    PVAPINS_BASE_URL: str = "https://api.pvapins.com/user/api"
 
     # --- SMS-Activate (Backup SMS OTP) ---
     SMSACTIVATE_API_KEY: str = ""
