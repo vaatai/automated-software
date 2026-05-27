@@ -1580,6 +1580,8 @@ class RegistrationBot:
                     else:
                         await self.fivesim.cancel_order(sms_order_id)
                 elif sms_provider == "pvapins":
-                    await self.pvapins.release_number(sms_order_id)
+                    await self.pvapins.release_number(
+                        sms_order_id, success=bool(result.get("mobile_otp_verified")),
+                    )
             except Exception:
                 logger.debug("Failed to cleanup SMS order %s", sms_order_id)
