@@ -236,41 +236,49 @@ class PVAPinsService(BaseOTPService, SMSProviderAdapter):
         return SMSResult(otp=None, provider=self.provider_name, order_id=order_id)
 
     async def release_number(self, order_id: str, success: bool = False) -> None:
-        """Release/reject a number. The v2 API uses reject endpoint."""
+        """Release/reject a number.
+
+        The v2 API has no explicit "complete" endpoint — numbers
+        auto-complete after OTP receipt.  We only call reject.php
+        when the number was *not* used successfully.
+        """
         phone_number = order_id
         ctx = self._rental_context.pop(phone_number, {})
         country_name = ctx.get("country", "India")
         app = ctx.get("app", "1xbet1")
 
-        if not success:
-            async with httpx.AsyncClient() as client:
-                try:
-                    await client.get(
-                        f"{self._base_url}/reject.php",
-                        params={
-                            "customer": self._api_key,
-                            "number": phone_number,
-                            "country": country_name,
-                            "app": app,
-                        },
-                        timeout=15,
-                    )
-                    logger.info("PVAPins rejected number %s", phone_number)
-                except Exception as exc:
-                    logger.warning("PVAPins release_number failed: %s", exc)
+        if success:
+            logger.info("PVAPins number %s completed (auto-finalized by provider)", phone_number)
+            return
+
+        async with httpx.AsyncClient() as client:
+            try:
+                await client.get(
+                    f"{self._base_url}/reject.php",
+                    params={
+                        "customer": self._api_key,
+                        "number": phone_number,
+                        "country": country_name,
+                        "app": app,
+                    },
+                    timeout=15,
+                )
+                logger.info("PVAPins rejected number %s", phone_number)
+            except Exception as exc:
+                logger.warning("PVAPins release_number failed: %s", exc)
 
     async def check_balance(self) -> float | None:
-        """Check account balance via get_rates (no direct balance endpoint in v2)."""
-        # v2 API doesn't have a direct balance endpoint;
-        # try loading countries as a connectivity check
+        """Check account balance via get_balance.php."""
         async with httpx.AsyncClient() as client:
             try:
                 resp = await client.get(
-                    f"{self._base_url}/load_countries.php",
+                    f"{self._base_url}/get_balance.php",
+                    params={"customer": self._api_key},
                     timeout=15,
                 )
                 if resp.status_code == 200:
-                    return 1.0  # API accessible, assume has balance
+                    data = resp.json()
+                    return float(data.get("balance", 0))
                 return None
             except Exception:
                 return None
