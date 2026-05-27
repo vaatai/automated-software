@@ -200,7 +200,7 @@ class PVAPinsService(BaseOTPService, SMSProviderAdapter):
 
         ctx = self._rental_context.get(phone_number, {})
         country_name = ctx.get("country", "India")
-        app = ctx.get("app", "1xbet1")
+        app = ctx.get("app", "Anyother")
 
         async with httpx.AsyncClient() as client:
             while time.monotonic() - start < timeout:
@@ -253,7 +253,7 @@ class PVAPinsService(BaseOTPService, SMSProviderAdapter):
         phone_number = order_id
         ctx = self._rental_context.pop(phone_number, {})
         country_name = ctx.get("country", "India")
-        app = ctx.get("app", "1xbet1")
+        app = ctx.get("app", "Anyother")
 
         if success:
             logger.info("PVAPins number %s completed (auto-finalized by provider)", phone_number)
