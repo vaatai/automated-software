@@ -234,25 +234,41 @@ class RegistrationBot:
                                 "[reg-%d] Renting phone number (country=%s, operator=%s)...",
                                 registration_id, phone_country, preferred_operator,
                             )
-                            try:
-                                num = await self.fivesim.rent_number(country=phone_country, operator=preferred_operator)
-                                sms_provider = "5sim"
-                            except Exception as e5:
-                                logger.warning(
-                                    "[reg-%d] 5SIM failed (%s), trying PVAPins...",
-                                    registration_id, e5,
-                                )
+                            # Country-aware provider ordering: PVAPins first for India
+                            if phone_country.upper() == "IN":
+                                providers = [
+                                    ("pvapins", self.pvapins),
+                                    ("5sim", self.fivesim),
+                                ]
+                            else:
+                                providers = [
+                                    ("5sim", self.fivesim),
+                                    ("pvapins", self.pvapins),
+                                ]
+                            num = None
+                            errors: list[str] = []
+                            for pname, provider in providers:
                                 try:
-                                    num = await self.pvapins.rent_number(country=phone_country)
-                                    sms_provider = "pvapins"
-                                except Exception as ep:
-                                    logger.error(
-                                        "[reg-%d] All SMS providers failed: 5sim=%s pvapins=%s",
-                                        registration_id, e5, ep,
+                                    kwargs: dict = {"country": phone_country}
+                                    if pname == "5sim":
+                                        kwargs["operator"] = preferred_operator
+                                    num = await provider.rent_number(**kwargs)
+                                    sms_provider = pname
+                                    break
+                                except Exception as exc:
+                                    errors.append(f"{pname}={exc}")
+                                    logger.warning(
+                                        "[reg-%d] %s failed (%s), trying next...",
+                                        registration_id, pname, exc,
                                     )
-                                    result["error"] = f"SMS providers failed: 5sim={e5}, pvapins={ep}"
-                                    result["screenshot"] = await session.screenshot("sms_fail")
-                                    return result
+                            if num is None:
+                                logger.error(
+                                    "[reg-%d] All SMS providers failed: %s",
+                                    registration_id, ", ".join(errors),
+                                )
+                                result["error"] = f"SMS providers failed: {', '.join(errors)}"
+                                result["screenshot"] = await session.screenshot("sms_fail")
+                                return result
                             sms_order_id = num.order_id
                             reg_data["phone"] = num.phone_number
                             result["phone_used"] = reg_data["phone"]
