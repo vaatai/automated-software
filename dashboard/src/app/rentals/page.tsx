@@ -9,7 +9,7 @@ import { useThemeClasses } from "@/hooks/use-theme-classes";
 import { rentals } from "@/lib/api";
 import type { RentalItem } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { Clock, Globe, Phone, PhoneCall, Plus, Timer, X } from "lucide-react";
+import { Clock, Globe, Phone, PhoneCall, Plus, Server, Timer, X } from "lucide-react";
 import { useCallback, useState } from "react";
 
 const COUNTRIES = [
@@ -79,6 +79,7 @@ export default function RentalsPage() {
   const [rentDuration, setRentDuration] = useState(24);
   const [customDuration, setCustomDuration] = useState("");
   const [rentLabel, setRentLabel] = useState("");
+  const [rentProvider, setRentProvider] = useState<string>("");
   const [renting, setRenting] = useState(false);
   const [rentErr, setRentErr] = useState<string | null>(null);
   const [releasing, setReleasing] = useState<number | null>(null);
@@ -89,7 +90,7 @@ export default function RentalsPage() {
     setRenting(true);
     setRentErr(null);
     try {
-      await rentals.rent({ country: rentCountry, label: rentLabel || undefined, duration_hours: effectiveDuration });
+      await rentals.rent({ country: rentCountry, label: rentLabel || undefined, duration_hours: effectiveDuration, preferred_provider: rentProvider || undefined });
       setShowRentDialog(false);
       setRentLabel("");
       refetch();
@@ -98,7 +99,7 @@ export default function RentalsPage() {
     } finally {
       setRenting(false);
     }
-  }, [rentCountry, rentLabel, effectiveDuration, refetch]);
+  }, [rentCountry, rentLabel, effectiveDuration, rentProvider, refetch]);
 
   const handleRelease = useCallback(async (id: number) => {
     setReleasing(id);
@@ -244,6 +245,20 @@ export default function RentalsPage() {
               )}
               <p className={`mt-1 text-xs ${tc.muted}`}>
                 Number will be available for {effectiveDuration < 1 ? `${Math.round(effectiveDuration * 60)} minutes` : effectiveDuration === 1 ? "1 hour" : `${effectiveDuration} hours`}
+              </p>
+            </div>
+            <div>
+              <label className={`mb-1.5 flex items-center gap-2 text-sm font-medium ${tc.label}`}>
+                <Server className="h-3.5 w-3.5" /> SMS Provider
+              </label>
+              <select value={rentProvider} onChange={(e) => setRentProvider(e.target.value)} className={tc.inputCls}>
+                <option value="">Auto (default order)</option>
+                <option value="pvapins">PVAPins</option>
+                <option value="5sim">5SIM</option>
+                <option value="sms-activate">SMS-Activate</option>
+              </select>
+              <p className={`mt-1 text-xs ${tc.muted}`}>
+                {rentProvider ? `${rentProvider} will be tried first, others as fallback` : rentCountry === "IN" ? "India: PVAPins → 5SIM → SMS-Activate" : "5SIM → PVAPins → SMS-Activate"}
               </p>
             </div>
             <div>

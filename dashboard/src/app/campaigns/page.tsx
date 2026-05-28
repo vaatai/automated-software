@@ -7,7 +7,7 @@ import { useThemeClasses } from "@/hooks/use-theme-classes";
 import { campaigns, websites } from "@/lib/api";
 import type { CampaignEntry, CampaignEntryResult, CampaignResponse } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { CheckCircle, Globe, Phone, Play, Plus, Rocket, Target, Trash2, XCircle } from "lucide-react";
+import { CheckCircle, Globe, Phone, Play, Plus, Rocket, Server, Target, Trash2, XCircle } from "lucide-react";
 import { useCallback, useState } from "react";
 
 const COUNTRIES = [
@@ -49,12 +49,13 @@ interface EntryRow {
   country: string;
   count: number;
   priority: string;
+  preferred_provider: string;
 }
 
 let nextId = 1;
 
 function makeEntry(): EntryRow {
-  return { id: nextId++, website_id: null, country: "US", count: 1, priority: "normal" };
+  return { id: nextId++, website_id: null, country: "US", count: 1, priority: "normal", preferred_provider: "" };
 }
 
 export default function CampaignsPage() {
@@ -63,6 +64,7 @@ export default function CampaignsPage() {
 
   const [entries, setEntries] = useState<EntryRow[]>([makeEntry()]);
   const [durationHours, setDurationHours] = useState(24);
+  const [campaignProvider, setCampaignProvider] = useState("");
   const [launching, setLaunching] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [result, setResult] = useState<CampaignResponse | null>(null);
@@ -98,8 +100,9 @@ export default function CampaignsPage() {
         country: e.country,
         count: e.count,
         priority: e.priority,
+        preferred_provider: e.preferred_provider || undefined,
       }));
-      const res = await campaigns.launch({ entries: campaignEntries, duration_hours: durationHours });
+      const res = await campaigns.launch({ entries: campaignEntries, duration_hours: durationHours, preferred_provider: campaignProvider || undefined });
       setResult(res);
     } catch (error) {
       setErr(error instanceof Error ? error.message : "Failed to launch campaign");
@@ -180,7 +183,7 @@ export default function CampaignsPage() {
                   )}
                 </div>
 
-                <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-5">
                   <div>
                     <label className={`mb-1 block text-xs font-medium ${tc.label}`}>Website</label>
                     <select
@@ -218,6 +221,21 @@ export default function CampaignsPage() {
                       onChange={(e) => updateEntry(entry.id, "count", Number(e.target.value))}
                       className={cn(tc.inputCls, "text-sm")}
                     />
+                  </div>
+                  <div>
+                    <label className={`mb-1 flex items-center gap-1 text-xs font-medium ${tc.label}`}>
+                      <Server className="h-3 w-3" /> Provider
+                    </label>
+                    <select
+                      value={entry.preferred_provider}
+                      onChange={(e) => updateEntry(entry.id, "preferred_provider", e.target.value)}
+                      className={cn(tc.inputCls, "text-sm")}
+                    >
+                      <option value="">Auto</option>
+                      <option value="pvapins">PVAPins</option>
+                      <option value="5sim">5SIM</option>
+                      <option value="sms-activate">SMS-Activate</option>
+                    </select>
                   </div>
                   <div>
                     <label className={`mb-1 block text-xs font-medium ${tc.label}`}>Priority</label>
@@ -268,6 +286,22 @@ export default function CampaignsPage() {
               </div>
             </div>
           )}
+
+          {/* Default provider selector */}
+          <div>
+            <label className={`mb-1.5 flex items-center gap-2 text-sm font-medium ${tc.label}`}>
+              <Server className="h-3.5 w-3.5" /> Default SMS Provider
+            </label>
+            <select value={campaignProvider} onChange={(e) => setCampaignProvider(e.target.value)} className={cn(tc.inputCls, "max-w-xs")}>
+              <option value="">Auto (country-based default)</option>
+              <option value="pvapins">PVAPins</option>
+              <option value="5sim">5SIM</option>
+              <option value="sms-activate">SMS-Activate</option>
+            </select>
+            <p className={`mt-1 text-xs ${tc.muted}`}>
+              {campaignProvider ? `All entries will use ${campaignProvider} first (unless overridden per-entry)` : "India uses PVAPins first, others use 5SIM first"}
+            </p>
+          </div>
 
           {/* Duration selector */}
           <div>
