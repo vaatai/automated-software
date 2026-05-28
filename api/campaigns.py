@@ -31,11 +31,19 @@ class CampaignEntry(BaseModel):
     country: str = Field(min_length=2, max_length=5)
     count: int = Field(default=1, ge=1, le=100)
     priority: str = "normal"
+    preferred_provider: str | None = Field(
+        default=None,
+        description="Preferred SMS provider: 'pvapins', '5sim', or 'sms-activate'.",
+    )
 
 
 class CampaignRequest(BaseModel):
     entries: list[CampaignEntry] = Field(..., min_length=1, max_length=50)
     duration_hours: float = Field(default=24, gt=0, le=720)
+    preferred_provider: str | None = Field(
+        default=None,
+        description="Default preferred SMS provider for all entries (can be overridden per-entry).",
+    )
 
 
 class EntryResult(BaseModel):
@@ -77,6 +85,13 @@ async def launch_campaign(body: CampaignRequest, db: AsyncSession = Depends(get_
     numbers_rented = 0
     numbers_reused = 0
 
+    # Determine per-country preferred provider from entries
+    country_preferred: dict[str, str | None] = {}
+    for country, c_entries in country_entries.items():
+        # Use entry-level preferred_provider if set, else fall back to campaign-level
+        entry_pref = next((e.preferred_provider for e in c_entries if e.preferred_provider), None)
+        country_preferred[country] = entry_pref or body.preferred_provider
+
     for country in country_entries:
         # Try to find an existing active rental
         rental = await rental_svc.find_reusable(country)
@@ -91,6 +106,7 @@ async def launch_campaign(body: CampaignRequest, db: AsyncSession = Depends(get_
                     country=country,
                     label=f"Campaign {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')}",
                     duration_hours=body.duration_hours,
+                    preferred_provider=country_preferred.get(country),
                 )
                 country_rentals[country] = rental
                 numbers_rented += 1
@@ -120,6 +136,10 @@ async def launch_campaign(body: CampaignRequest, db: AsyncSession = Depends(get_
 
         # Build custom_data for the registration
         custom_data: dict = {"phone_country": country}
+        # Pass preferred_provider so registration_bot uses correct provider ordering
+        pref_provider = entry.preferred_provider or body.preferred_provider
+        if pref_provider:
+            custom_data["preferred_provider"] = pref_provider
         if rental:
             custom_data["reuse_rental_id"] = rental.id
             custom_data["reuse_phone"] = rental.phone_number

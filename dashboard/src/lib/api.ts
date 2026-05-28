@@ -101,7 +101,7 @@ export const rentals = {
     request<RentalListResponse>(`/api/rentals/${qs({ ...p })}`),
   active: (country?: string) =>
     request<RentalListResponse>(`/api/rentals/active${qs({ country })}`),
-  rent: (data: { country: string; label?: string; duration_hours?: number }) =>
+  rent: (data: { country: string; label?: string; duration_hours?: number; preferred_provider?: string }) =>
     request<RentalItem>("/api/rentals/rent", { method: "POST", body: JSON.stringify(data) }),
   release: (id: number) =>
     request<RentalItem>(`/api/rentals/${id}/release`, { method: "POST" }),
@@ -116,6 +116,7 @@ export interface CampaignEntry {
   country: string;
   count: number;
   priority?: string;
+  preferred_provider?: string;
 }
 export interface CampaignEntryResult {
   website_id: number;
@@ -137,7 +138,7 @@ export interface CampaignResponse {
   created_at: string;
 }
 export const campaigns = {
-  launch: (data: { entries: CampaignEntry[]; duration_hours?: number }) =>
+  launch: (data: { entries: CampaignEntry[]; duration_hours?: number; preferred_provider?: string }) =>
     request<CampaignResponse>("/api/campaigns/launch", { method: "POST", body: JSON.stringify(data) }),
 };
 

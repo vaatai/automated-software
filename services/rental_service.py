@@ -84,10 +84,12 @@ class RentalService:
         country: str = "US",
         label: str | None = None,
         duration_hours: float = RENTAL_DURATION_HOURS,
+        preferred_provider: str | None = None,
     ) -> RentalNumber:
         """Rent a new phone number for the specified duration.
 
-        Provider order:
+        If preferred_provider is specified, that provider is tried first.
+        Otherwise uses default ordering:
         - India: PVAPins → 5SIM → SMS-Activate
         - All others: 5SIM → PVAPins → SMS-Activate
         """
@@ -95,7 +97,19 @@ class RentalService:
         provider_name = None
         errors: list[str] = []
 
-        if country.upper() == "IN":
+        all_providers = [
+            ("pvapins", self.pvapins),
+            ("5sim", self.fivesim),
+            ("sms-activate", self.smsactivate),
+        ]
+
+        if preferred_provider:
+            # Move preferred provider to front of list
+            preferred = preferred_provider.lower().strip()
+            preferred_list = [(n, p) for n, p in all_providers if n == preferred]
+            others = [(n, p) for n, p in all_providers if n != preferred]
+            providers = preferred_list + others
+        elif country.upper() == "IN":
             providers = [
                 ("pvapins", self.pvapins),
                 ("5sim", self.fivesim),

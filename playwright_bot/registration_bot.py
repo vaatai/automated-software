@@ -235,8 +235,16 @@ class RegistrationBot:
                                 "[reg-%d] Renting phone number (country=%s, operator=%s)...",
                                 registration_id, phone_country, preferred_operator,
                             )
-                            # Country-aware provider ordering: PVAPins first for India
-                            if phone_country.upper() == "IN":
+                            # Provider ordering: respect preferred_provider if set
+                            preferred_prov = (custom_data or {}).get("preferred_provider") or (custom_data or {}).get("reuse_provider")
+                            all_provs = [
+                                ("pvapins", self.pvapins),
+                                ("5sim", self.fivesim),
+                            ]
+                            if preferred_prov:
+                                pref = preferred_prov.lower().strip()
+                                providers = [(n, p) for n, p in all_provs if n == pref] + [(n, p) for n, p in all_provs if n != pref]
+                            elif phone_country.upper() == "IN":
                                 providers = [
                                     ("pvapins", self.pvapins),
                                     ("5sim", self.fivesim),
