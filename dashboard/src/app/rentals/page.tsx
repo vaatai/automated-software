@@ -99,7 +99,7 @@ export default function RentalsPage() {
     } finally {
       setRenting(false);
     }
-  }, [rentCountry, rentLabel, effectiveDuration, refetch]);
+  }, [rentCountry, rentLabel, effectiveDuration, rentProvider, refetch]);
 
   const handleRelease = useCallback(async (id: number) => {
     setReleasing(id);
