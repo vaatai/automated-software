@@ -14,6 +14,19 @@ class OTPPattern:
     flags: int = re.IGNORECASE
 
 
+# Regex to strip CSS style attributes and their values from HTML
+_STYLE_ATTR_RE = re.compile(r'\bstyle\s*=\s*"[^"]*"', re.IGNORECASE)
+# Regex to strip entire <style> blocks
+_STYLE_BLOCK_RE = re.compile(r'<style[^>]*>.*?</style>', re.IGNORECASE | re.DOTALL)
+
+
+def _strip_html_noise(text: str) -> str:
+    """Remove style attributes and blocks that contain CSS hex colors like #000000."""
+    text = _STYLE_BLOCK_RE.sub('', text)
+    text = _STYLE_ATTR_RE.sub('', text)
+    return text
+
+
 # Default patterns ordered by specificity (most specific first)
 DEFAULT_PATTERNS: list[OTPPattern] = [
     OTPPattern(
@@ -32,6 +45,11 @@ DEFAULT_PATTERNS: list[OTPPattern] = [
         priority=8,
     ),
     OTPPattern(
+        name="code_in_p_tag",
+        pattern=r"<p[^>]*>(\d{4,8})</p>",
+        priority=7,
+    ),
+    OTPPattern(
         name="code_in_bold",
         pattern=r"<b>(\d{4,8})</b>",
         priority=7,
@@ -43,12 +61,12 @@ DEFAULT_PATTERNS: list[OTPPattern] = [
     ),
     OTPPattern(
         name="standalone_6digit",
-        pattern=r"\b(\d{6})\b",
+        pattern=r"(?<!#)\b(\d{6})\b",
         priority=3,
     ),
     OTPPattern(
         name="standalone_4digit",
-        pattern=r"\b(\d{4})\b",
+        pattern=r"(?<!#)\b(\d{4})\b",
         priority=1,
     ),
 ]
@@ -90,12 +108,15 @@ class OTPParser:
         """Extract OTP from text using all registered patterns.
 
         Returns the first match from the highest-priority pattern.
+        Strips CSS style attributes from HTML to avoid matching hex colors.
         """
         if not text:
             return OTPResult(otp=None)
 
+        cleaned = _strip_html_noise(text)
+
         for pat in self._patterns:
-            match = re.search(pat.pattern, text, pat.flags)
+            match = re.search(pat.pattern, cleaned, pat.flags)
             if match:
                 code = match.group(1)
                 if self.min_digits <= len(code) <= self.max_digits:
