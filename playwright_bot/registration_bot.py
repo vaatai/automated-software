@@ -504,9 +504,36 @@ class RegistrationBot:
                                     break
                                 await asyncio.sleep(1)
                             if not captcha_solved:
-                                raise RuntimeError(
-                                    f"Turnstile did not auto-solve in 30s — retry with new IP"
+                                logger.info(
+                                    "[reg-%d] Turnstile auto-solve failed, trying CapSolver fallback...",
+                                    registration_id,
                                 )
+                                token = await self._solve_with_fallback(
+                                    "solve_turnstile",
+                                    website_url=url,
+                                    website_key=captcha_sitekey,
+                                )
+                                if token:
+                                    await page.evaluate(
+                                        """(token) => {
+                                            const inp = document.querySelector('input[name="cf-turnstile-response"]');
+                                            if (inp) { inp.value = token; }
+                                            // Also try callback
+                                            if (window.turnstile && window.turnstile._callbacks) {
+                                                for (const cb of Object.values(window.turnstile._callbacks)) {
+                                                    if (typeof cb === 'function') cb(token);
+                                                }
+                                            }
+                                        }""",
+                                        token,
+                                    )
+                                    captcha_solved = True
+                                    result["steps_completed"].append("captcha_solved_turnstile_capsolver")
+                                    logger.info("[reg-%d] Turnstile solved via CapSolver", registration_id)
+                                else:
+                                    raise RuntimeError(
+                                        "Turnstile did not auto-solve in 30s and CapSolver fallback failed — retry with new IP"
+                                    )
 
                     # ── Step 4: Fill fields + submit ──
                     steps = form_cfg.get("steps", [])
